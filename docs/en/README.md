@@ -26,3 +26,5 @@ Project Home: [README.md](../../README.md) · [README.zh-CN.md](../../README.zh-
 
 - [2026-03-02 Codex OAuth OpenAI Design](../plans/2026-03-02-codex-oauth-openai-design.md)
 - [2026-03-02 Codex OAuth OpenAI Implementation](../plans/2026-03-02-codex-oauth-openai-implementation.md)
+- [2026-03-02 Network Proxy Design](../plans/2026-03-02-network-proxy-design.md)
+- [2026-03-02 Network Proxy Implementation](../plans/2026-03-02-network-proxy-implementation.md)
