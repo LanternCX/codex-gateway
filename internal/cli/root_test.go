@@ -19,14 +19,14 @@ func TestRootCommand_Subcommands(t *testing.T) {
 	}
 }
 
-func TestAuthLoginCommand_ModeFlagRemoved(t *testing.T) {
+func TestAuthLoginCommand_ModeFlagAvailable(t *testing.T) {
 	root := NewRootCommand()
 	login, _, err := root.Find([]string{"auth", "login"})
 	if err != nil {
 		t.Fatalf("find auth login command: %v", err)
 	}
 
-	if login.Flags().Lookup("mode") != nil {
-		t.Fatal("expected auth login --mode flag to be removed from mainline")
+	if login.Flags().Lookup("mode") == nil {
+		t.Fatal("expected auth login --mode flag to be available")
 	}
 }
