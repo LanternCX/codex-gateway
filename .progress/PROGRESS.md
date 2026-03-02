@@ -44,3 +44,4 @@ abc123d (or TBD)
 | 2026-03-02-8 | 2026-03-02 | Add formal bilingual API documentation and OpenAPI spec | `.progress/entries/2026/2026-03-02-8.md` | docs, api, openapi, i18n |
 | 2026-03-02-9 | 2026-03-02 | Fix opencode compatibility by removing unsupported max_output_tokens forwarding | `.progress/entries/2026/2026-03-02-9.md` | opencode, compatibility, chat, payload |
 | 2026-03-02-10 | 2026-03-02 | Finalize callback-only mainline and split device flow into hold branch | `.progress/entries/2026/2026-03-02-10.md` | git-flow, callback, device-branch, docs |
+| 2026-03-02-11 | 2026-03-02 | Upgrade gateway logging to industrial-grade multi-sink structured telemetry | `.progress/entries/2026/2026-03-02-11.md` | logging, observability, request-id, redaction |

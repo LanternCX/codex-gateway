@@ -31,6 +31,7 @@ go test -race ./...
 - `fix:` 修复问题
 - `docs:` 文档变更
 - `chore:` 工具链或维护变更
+- 由 Agent 生成的提交必须包含：`Co-authored-by: opencode-agent[bot] <opencode-agent[bot]@users.noreply.github.com>`
 
 示例：
 

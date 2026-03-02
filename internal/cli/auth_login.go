@@ -7,7 +7,6 @@ import (
 
 	"codex-gateway/internal/auth"
 	"codex-gateway/internal/config"
-	"codex-gateway/internal/logging"
 	"codex-gateway/internal/oauth"
 	"github.com/spf13/cobra"
 )
@@ -51,7 +50,7 @@ func runAuthLogin(ctx context.Context, workdir, configFile string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	rootLogger, err := logging.New(cfg.Logging.Level, cfg.Logging.Format, os.Stdout)
+	rootLogger, err := newRootLogger(cfg.Logging, paths.Workdir)
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}

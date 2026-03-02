@@ -9,6 +9,7 @@ Docs: [Index](README.md) · [OpenAPI Spec](../openapi.yaml) · [Architecture](ar
 - Base URL (default): `http://127.0.0.1:8080`
 - Auth: `Authorization: Bearer <downstream_api_key>` for protected endpoints
 - Content type: `application/json` (plus `text/event-stream` for streaming chat)
+- Optional request correlation header: `X-Request-ID` (echoed back, auto-generated when missing)
 
 ## Error Envelope
 

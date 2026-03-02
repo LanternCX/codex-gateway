@@ -12,7 +12,6 @@ import (
 
 	"codex-gateway/internal/auth"
 	"codex-gateway/internal/config"
-	"codex-gateway/internal/logging"
 	"codex-gateway/internal/oauth"
 	"codex-gateway/internal/server"
 	"codex-gateway/internal/upstream"
@@ -48,13 +47,14 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	rootLogger, err := logging.New(cfg.Logging.Level, cfg.Logging.Format, os.Stdout)
+	rootLogger, err := newRootLogger(cfg.Logging, paths.Workdir)
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}
 	logger := rootLogger.With("component", "cli")
 	serverLogger := rootLogger.With("component", "server")
 	authLogger := rootLogger.With("component", "auth")
+	upstreamLogger := rootLogger.With("component", "upstream")
 
 	store := auth.NewFileStore(paths.TokenPath)
 
@@ -93,6 +93,7 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 	upstreamClient := upstream.NewClient(
 		upstreamBaseURL,
 		time.Duration(cfg.Upstream.TimeoutSeconds)*time.Second,
+		upstream.WithLogger(upstreamLogger),
 	)
 
 	handler := server.New(server.Dependencies{

@@ -25,8 +25,20 @@ type AuthConfig struct {
 }
 
 type LoggingConfig struct {
-	Level  string `yaml:"level"`
-	Format string `yaml:"format"`
+	Level  string            `yaml:"level"`
+	Format string            `yaml:"format"`
+	Output string            `yaml:"output"`
+	Color  string            `yaml:"color"`
+	File   LoggingFileConfig `yaml:"file"`
+}
+
+type LoggingFileConfig struct {
+	Dir        string `yaml:"dir"`
+	Name       string `yaml:"name"`
+	MaxSizeMB  int    `yaml:"max_size_mb"`
+	MaxBackups int    `yaml:"max_backups"`
+	MaxAgeDays int    `yaml:"max_age_days"`
+	Compress   bool   `yaml:"compress"`
 }
 
 type OAuthConfig struct {
@@ -109,6 +121,30 @@ func applyDefaults(cfg *Config) {
 		cfg.Logging.Format = "text"
 	}
 
+	if cfg.Logging.Output == "" {
+		cfg.Logging.Output = "stdout"
+	}
+
+	if cfg.Logging.Color == "" {
+		cfg.Logging.Color = "auto"
+	}
+
+	if cfg.Logging.File.Name == "" {
+		cfg.Logging.File.Name = "codex-gateway.log"
+	}
+
+	if cfg.Logging.File.MaxSizeMB == 0 {
+		cfg.Logging.File.MaxSizeMB = 100
+	}
+
+	if cfg.Logging.File.MaxBackups == 0 {
+		cfg.Logging.File.MaxBackups = 10
+	}
+
+	if cfg.Logging.File.MaxAgeDays == 0 {
+		cfg.Logging.File.MaxAgeDays = 7
+	}
+
 	if cfg.OAuth.ClientID == "" {
 		cfg.OAuth.ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 	}
@@ -173,6 +209,38 @@ func (c Config) Validate() error {
 	case "text", "json":
 	default:
 		return fmt.Errorf("invalid logging.format %q (expected text or json)", c.Logging.Format)
+	}
+
+	output := strings.ToLower(strings.TrimSpace(c.Logging.Output))
+	switch output {
+	case "stdout", "file", "both":
+	default:
+		return fmt.Errorf("invalid logging.output %q (expected stdout, file, or both)", c.Logging.Output)
+	}
+
+	color := strings.ToLower(strings.TrimSpace(c.Logging.Color))
+	switch color {
+	case "auto", "always", "never":
+	default:
+		return fmt.Errorf("invalid logging.color %q (expected auto, always, or never)", c.Logging.Color)
+	}
+
+	if output != "stdout" {
+		if strings.TrimSpace(c.Logging.File.Name) == "" {
+			return fmt.Errorf("invalid logging.file.name %q (must not be empty)", c.Logging.File.Name)
+		}
+
+		if c.Logging.File.MaxSizeMB <= 0 {
+			return fmt.Errorf("invalid logging.file.max_size_mb %d (must be > 0)", c.Logging.File.MaxSizeMB)
+		}
+
+		if c.Logging.File.MaxBackups <= 0 {
+			return fmt.Errorf("invalid logging.file.max_backups %d (must be > 0)", c.Logging.File.MaxBackups)
+		}
+
+		if c.Logging.File.MaxAgeDays <= 0 {
+			return fmt.Errorf("invalid logging.file.max_age_days %d (must be > 0)", c.Logging.File.MaxAgeDays)
+		}
 	}
 
 	return nil

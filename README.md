@@ -19,7 +19,8 @@ A self-hosted gateway that:
   - In `codex_oauth` mode, `/v1/models` returns a compatibility model list and `/v1/chat/completions` is translated to Codex responses backend.
 - Fixed downstream API key validation via `Authorization: Bearer <fixed_key>`
 - Automatic OAuth refresh before upstream calls
-- Structured logging with configurable `logging.level` and `logging.format`
+- Structured logging with configurable level/format/output/color and file rotation settings
+- Request correlation via `X-Request-ID` (auto-generated when missing)
 - Health endpoint: `GET /healthz`
 
 ## Documentation
@@ -39,7 +40,8 @@ All runtime files are resolved from `--workdir` (default: current directory):
 
 - `config.yaml`
 - `oauth-token.json`
-- Structured logs emitted to stdout (`logging.level`, `logging.format`)
+- Structured logs emitted to stdout or file (`logging.output`)
+- `logs/` when `logging.output` is `file` or `both` (default path `<workdir>/logs`)
 
 Runtime path policy:
 

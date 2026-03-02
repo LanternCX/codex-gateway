@@ -19,7 +19,8 @@
   - 在 `codex_oauth` 模式下，`/v1/models` 返回兼容模型列表，`/v1/chat/completions` 会转换为 Codex responses 后端请求。
 - 固定下游 API Key 鉴权：`Authorization: Bearer <fixed_key>`
 - 上游 OAuth 令牌自动刷新
-- 结构化日志（可配置 `logging.level` 与 `logging.format`）
+- 结构化日志（可配置 level/format/output/color 与文件滚动策略）
+- 请求关联追踪：支持 `X-Request-ID`（缺失时自动生成）
 - 健康检查接口：`GET /healthz`
 
 ## 文档
@@ -39,7 +40,8 @@
 
 - `config.yaml`
 - `oauth-token.json`
-- 结构化日志输出到 stdout（`logging.level`、`logging.format`）
+- 结构化日志可输出到 stdout 或文件（`logging.output`）
+- 当 `logging.output` 为 `file` 或 `both` 时，会使用 `logs/`（默认 `<workdir>/logs`）
 
 运行路径策略：
 

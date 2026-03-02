@@ -246,3 +246,123 @@ upstream:
 		t.Fatalf("expected logging.format validation error, got: %v", err)
 	}
 }
+
+func TestLoad_LoggingOutputDefaults(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	content := `auth:
+  downstream_api_key: "fixed-key"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected config to load, got: %v", err)
+	}
+
+	if cfg.Logging.Output != "stdout" {
+		t.Fatalf("expected default logging.output stdout, got %q", cfg.Logging.Output)
+	}
+
+	if cfg.Logging.Color != "auto" {
+		t.Fatalf("expected default logging.color auto, got %q", cfg.Logging.Color)
+	}
+
+	if cfg.Logging.File.Name != "codex-gateway.log" {
+		t.Fatalf("expected default logging.file.name codex-gateway.log, got %q", cfg.Logging.File.Name)
+	}
+
+	if cfg.Logging.File.MaxSizeMB != 100 {
+		t.Fatalf("expected default logging.file.max_size_mb 100, got %d", cfg.Logging.File.MaxSizeMB)
+	}
+
+	if cfg.Logging.File.MaxBackups != 10 {
+		t.Fatalf("expected default logging.file.max_backups 10, got %d", cfg.Logging.File.MaxBackups)
+	}
+
+	if cfg.Logging.File.MaxAgeDays != 7 {
+		t.Fatalf("expected default logging.file.max_age_days 7, got %d", cfg.Logging.File.MaxAgeDays)
+	}
+}
+
+func TestLoad_InvalidLoggingOutput(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	content := `auth:
+  downstream_api_key: "fixed-key"
+logging:
+  output: "console"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	if !strings.Contains(err.Error(), "logging.output") {
+		t.Fatalf("expected logging.output validation error, got: %v", err)
+	}
+}
+
+func TestLoad_InvalidLoggingColor(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	content := `auth:
+  downstream_api_key: "fixed-key"
+logging:
+  color: "on"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	if !strings.Contains(err.Error(), "logging.color") {
+		t.Fatalf("expected logging.color validation error, got: %v", err)
+	}
+}
+
+func TestLoad_InvalidLoggingFileMaxSize(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	content := `auth:
+  downstream_api_key: "fixed-key"
+logging:
+  output: "file"
+  file:
+    max_size_mb: -1
+upstream:
+  base_url: "https://api.example.com"
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	if !strings.Contains(err.Error(), "logging.file.max_size_mb") {
+		t.Fatalf("expected logging.file.max_size_mb validation error, got: %v", err)
+	}
+}

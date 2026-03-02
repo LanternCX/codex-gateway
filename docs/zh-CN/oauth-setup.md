@@ -27,6 +27,12 @@ callback 模式下最小必填配置：
 
 - `level`（`debug`、`info`、`warn`、`error`）
 - `format`（`text`、`json`）
+- `output`（`stdout`、`file`、`both`）
+- `color`（`auto`、`always`、`never`，仅在 `text` 格式生效）
+- `file.dir`（为空时默认 `<workdir>/logs`）
+- `file.name`
+- `file.max_size_mb`、`file.max_backups`、`file.max_age_days`
+- `file.compress`
 
 `oauth` 可选覆盖字段：
 

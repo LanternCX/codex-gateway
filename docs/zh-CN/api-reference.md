@@ -9,6 +9,7 @@
 - 默认基础地址：`http://127.0.0.1:8080`
 - 鉴权：受保护接口需要 `Authorization: Bearer <downstream_api_key>`
 - 内容类型：`application/json`（流式 chat 返回 `text/event-stream`）
+- 可选请求关联头：`X-Request-ID`（会在响应中回传；缺失时自动生成）
 
 ## 错误结构
 

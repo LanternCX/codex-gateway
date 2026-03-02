@@ -21,14 +21,15 @@ By default, runtime artifacts are resolved from the current working directory (o
 
 - `config.yaml`: server/auth/oauth/upstream settings
 - `oauth-token.json`: persisted OAuth access/refresh token
-- stdout logs: structured output controlled by `logging.level` and `logging.format`
+- structured logs: `stdout`, `file`, or `both` controlled by `logging.output`; text color mode controlled by `logging.color`
+- when file logging is enabled, default log directory is `<workdir>/logs`
 
 ## Package Boundaries
 
 - `cmd/codex-gateway`: executable entrypoint.
 - `internal/cli`: Cobra command wiring (`serve`, `auth login`).
 - `internal/config`: YAML config loading + validation.
-- `internal/logging`: structured logger construction and logging format/level handling.
+- `internal/logging`: logger construction, redaction, request-id propagation helpers, and multi-sink output handling.
 - `internal/auth`: token persistence + refresh policy manager.
 - `internal/oauth`: OAuth device flow and refresh HTTP interactions.
 - `internal/upstream`: upstream HTTP client wrapper.

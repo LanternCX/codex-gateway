@@ -9,7 +9,19 @@ logging:
   # Log level: debug, info, warn, error
   level: "info"
   # Log format: text, json
-  format: "text"
+  format: "json"
+  # Log output: stdout, file, both
+  output: "stdout"
+  # Log color mode for text format: auto, always, never
+  color: "auto"
+  file:
+    # Empty means <workdir>/logs
+    dir: ""
+    name: "codex-gateway.log"
+    max_size_mb: 100
+    max_backups: 10
+    max_age_days: 7
+    compress: false
 
 oauth:
   # Callback mode defaults are already set for Codex OAuth.
