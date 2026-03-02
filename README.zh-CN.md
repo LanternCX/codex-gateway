@@ -2,8 +2,6 @@
 
 语言： [English](README.md) | [简体中文](README.zh-CN.md)
 
-快速导航： [功能](#功能) · [运行目录](#运行目录) · [快速开始](#快速开始) · [API 参考](#api-参考) · [错误码](#错误码) · [开发](#开发) · [文档索引](docs/zh-CN/README.md)
-
 这是一个自托管网关，用于：
 
 - 接收 OpenAI 兼容的下游请求（`/v1/models`、`/v1/chat/completions`）

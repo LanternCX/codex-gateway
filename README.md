@@ -2,8 +2,6 @@
 
 Language: [English](README.md) | [简体中文](README.zh-CN.md)
 
-Quick Links: [Features](#features) · [Runtime Directory](#runtime-directory) · [Quick Start](#quick-start) · [API Reference](#api-reference) · [Errors](#errors) · [Development](#development) · [Docs Index](docs/en/README.md)
-
 A self-hosted gateway that:
 
 - accepts OpenAI-compatible downstream requests (`/v1/models`, `/v1/chat/completions`)
