@@ -366,3 +366,83 @@ upstream:
 		t.Fatalf("expected logging.file.max_size_mb validation error, got: %v", err)
 	}
 }
+
+func TestLoad_ValidNetworkProxyURL(t *testing.T) {
+	tests := []struct {
+		name       string
+		proxyURL   string
+		expectLoad string
+	}{
+		{name: "empty proxy_url is valid", proxyURL: "", expectLoad: ""},
+		{name: "http proxy_url is valid", proxyURL: "http://proxy.example.com:8080", expectLoad: "http://proxy.example.com:8080"},
+		{name: "https proxy_url is valid", proxyURL: "https://proxy.example.com:8443", expectLoad: "https://proxy.example.com:8443"},
+		{name: "socks5 proxy_url is valid", proxyURL: "socks5://proxy.example.com:1080", expectLoad: "socks5://proxy.example.com:1080"},
+		{name: "socks5h proxy_url is valid", proxyURL: "socks5h://proxy.example.com:1080", expectLoad: "socks5h://proxy.example.com:1080"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			path := filepath.Join(tmp, "config.yaml")
+			content := `auth:
+  downstream_api_key: "fixed-key"
+network:
+  proxy_url: "` + tc.proxyURL + `"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatalf("expected valid network.proxy_url, got error: %v", err)
+			}
+
+			if cfg.Network.ProxyURL != tc.expectLoad {
+				t.Fatalf("unexpected network.proxy_url: %q", cfg.Network.ProxyURL)
+			}
+		})
+	}
+}
+
+func TestLoad_InvalidNetworkProxyURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		proxyURL string
+	}{
+		{name: "unsupported scheme", proxyURL: "ftp://proxy.example.com:21"},
+		{name: "missing scheme", proxyURL: "proxy.example.com:8080"},
+		{name: "relative path", proxyURL: "/tmp/proxy.sock"},
+		{name: "missing hostname", proxyURL: "http://:8080"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			path := filepath.Join(tmp, "config.yaml")
+			content := `auth:
+  downstream_api_key: "fixed-key"
+network:
+  proxy_url: "` + tc.proxyURL + `"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+
+			_, err := Load(path)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+
+			if !strings.Contains(err.Error(), "network.proxy_url") {
+				t.Fatalf("expected network.proxy_url validation error, got: %v", err)
+			}
+		})
+	}
+}

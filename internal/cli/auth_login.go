@@ -57,6 +57,10 @@ func runAuthLogin(ctx context.Context, workdir, configFile string) error {
 	logger := rootLogger.With("component", "auth")
 
 	store := auth.NewFileStore(paths.TokenPath)
+	oauthHTTPClient, err := newOAuthHTTPClient(cfg.Network.ProxyURL)
+	if err != nil {
+		return fmt.Errorf("build oauth http client: %w", err)
+	}
 
 	oauthClient := oauth.NewClient(oauth.Config{
 		ClientID:                    cfg.OAuth.ClientID,
@@ -70,7 +74,7 @@ func runAuthLogin(ctx context.Context, workdir, configFile string) error {
 		Originator:                  cfg.OAuth.Originator,
 		Scopes:                      cfg.OAuth.Scopes,
 		Audience:                    cfg.OAuth.Audience,
-	})
+	}, oauth.WithHTTPClient(oauthHTTPClient))
 
 	var token auth.Token
 	logger.InfoContext(ctx, "starting oauth login", "mode", "callback")

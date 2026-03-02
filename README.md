@@ -61,14 +61,24 @@ Upstream mode:
 go build -o codex-gateway ./cmd/codex-gateway
 ```
 
-2) Prepare config:
+2) Prepare config (from repository root):
 
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-Then edit `config.yaml` with at least your fixed downstream key and upstream base URL.
+Then edit `config.yaml` with at least `auth.downstream_api_key`.
+`upstream.mode` defaults to `codex_oauth` when omitted; set `upstream.base_url` only when `upstream.mode: openai_api`.
 For Codex OAuth callback mode, OAuth endpoints and client id already have defaults.
+If needed, you can set an outbound proxy for both `auth login` and `serve` requests:
+
+```yaml
+network:
+  proxy_url: "http://127.0.0.1:7890"
+```
+
+`network.proxy_url` must be an absolute URL with host and a supported scheme: `http`, `https`, `socks5`, or `socks5h` (for example, `http://127.0.0.1:7890` or `socks5h://127.0.0.1:1080`).
+Leave `network.proxy_url` empty or unset to use no explicit proxy.
 
 3) Run OAuth login (interactive):
 

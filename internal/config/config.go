@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -13,6 +14,7 @@ type Config struct {
 	Auth     AuthConfig     `yaml:"auth"`
 	Logging  LoggingConfig  `yaml:"logging"`
 	OAuth    OAuthConfig    `yaml:"oauth"`
+	Network  NetworkConfig  `yaml:"network"`
 	Upstream UpstreamConfig `yaml:"upstream"`
 }
 
@@ -53,6 +55,10 @@ type OAuthConfig struct {
 	Originator                  string   `yaml:"originator"`
 	Scopes                      []string `yaml:"scopes"`
 	Audience                    string   `yaml:"audience"`
+}
+
+type NetworkConfig struct {
+	ProxyURL string `yaml:"proxy_url"`
 }
 
 type UpstreamConfig struct {
@@ -240,6 +246,20 @@ func (c Config) Validate() error {
 
 		if c.Logging.File.MaxAgeDays <= 0 {
 			return fmt.Errorf("invalid logging.file.max_age_days %d (must be > 0)", c.Logging.File.MaxAgeDays)
+		}
+	}
+
+	if proxyURL := strings.TrimSpace(c.Network.ProxyURL); proxyURL != "" {
+		u, err := url.Parse(proxyURL)
+		if err != nil || !u.IsAbs() || strings.TrimSpace(u.Hostname()) == "" {
+			return fmt.Errorf("invalid network.proxy_url %q (expected absolute URL with host)", c.Network.ProxyURL)
+		}
+
+		scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+		switch scheme {
+		case "http", "https", "socks5", "socks5h":
+		default:
+			return fmt.Errorf("invalid network.proxy_url %q (expected scheme http, https, socks5, or socks5h)", c.Network.ProxyURL)
 		}
 	}
 

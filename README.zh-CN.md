@@ -61,14 +61,24 @@
 go build -o codex-gateway ./cmd/codex-gateway
 ```
 
-2）准备配置：
+2）准备配置（在仓库根目录执行）：
 
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-然后编辑 `config.yaml`，至少填写固定下游 key 和上游 `base_url`。
+然后编辑 `config.yaml`，至少填写 `auth.downstream_api_key`。
+未设置时 `upstream.mode` 默认为 `codex_oauth`；仅在 `upstream.mode: openai_api` 时需要设置 `upstream.base_url`。
 对于 Codex OAuth 的 callback 模式，OAuth 端点和 `client_id` 已有默认值。
+如有需要，可为 `auth login` 与 `serve` 的外发请求配置统一代理：
+
+```yaml
+network:
+  proxy_url: "http://127.0.0.1:7890"
+```
+
+`network.proxy_url` 必须是包含 host 的绝对 URL，且协议仅支持 `http`、`https`、`socks5`、`socks5h`（例如 `http://127.0.0.1:7890` 或 `socks5h://127.0.0.1:1080`）。
+将 `network.proxy_url` 留空或不设置时，表示不显式配置代理。
 
 3）执行 OAuth 登录（交互式）：
 

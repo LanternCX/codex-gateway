@@ -57,6 +57,10 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 	upstreamLogger := rootLogger.With("component", "upstream")
 
 	store := auth.NewFileStore(paths.TokenPath)
+	oauthHTTPClient, err := newOAuthHTTPClient(cfg.Network.ProxyURL)
+	if err != nil {
+		return fmt.Errorf("build oauth http client: %w", err)
+	}
 
 	oauthClient := oauth.NewClient(oauth.Config{
 		ClientID:                    cfg.OAuth.ClientID,
@@ -70,7 +74,7 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 		Originator:                  cfg.OAuth.Originator,
 		Scopes:                      cfg.OAuth.Scopes,
 		Audience:                    cfg.OAuth.Audience,
-	})
+	}, oauth.WithHTTPClient(oauthHTTPClient))
 
 	manager := auth.NewManager(store, func(ctx context.Context, in auth.Token) (auth.Token, error) {
 		refreshed, err := oauthClient.RefreshToken(ctx, in.RefreshToken)
@@ -90,9 +94,15 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 		upstreamBaseURL = cfg.Upstream.CodexBaseURL
 	}
 
+	upstreamHTTPClient, err := newUpstreamHTTPClient(cfg.Upstream.TimeoutSeconds, cfg.Network.ProxyURL)
+	if err != nil {
+		return fmt.Errorf("build upstream http client: %w", err)
+	}
+
 	upstreamClient := upstream.NewClient(
 		upstreamBaseURL,
 		time.Duration(cfg.Upstream.TimeoutSeconds)*time.Second,
+		upstream.WithHTTPClient(upstreamHTTPClient),
 		upstream.WithLogger(upstreamLogger),
 	)
 

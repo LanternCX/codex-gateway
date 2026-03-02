@@ -10,7 +10,7 @@ Default mode is callback-based browser login with local redirect.
 
 ## 1) Prepare Runtime Config
 
-Copy sample config and edit values:
+Copy sample config and edit values (from repository root):
 
 ```bash
 cp config.example.yaml config.yaml
@@ -21,7 +21,9 @@ cp config.example.yaml config.yaml
 Required minimum config for callback mode:
 
 - `auth.downstream_api_key`
-- `upstream.mode` (default `codex_oauth`)
+
+`upstream.mode` defaults to `codex_oauth` when omitted.
+Set `upstream.base_url` only when using `upstream.mode: openai_api`.
 
 Optional `logging` settings:
 
@@ -38,6 +40,7 @@ Optional `oauth` overrides:
 
 - `client_id`
 - `authorize_endpoint`
+- `device_authorization_endpoint`
 - `token_endpoint`
 - `redirect_host`
 - `redirect_port`
@@ -45,6 +48,17 @@ Optional `oauth` overrides:
 - `scopes`
 - `audience`
 - `client_secret` (required by some providers)
+
+Optional outbound proxy:
+
+```yaml
+network:
+  proxy_url: "http://127.0.0.1:7890"
+```
+
+- Empty or unset `network.proxy_url` means no explicit proxy.
+- `network.proxy_url` must be an absolute URL with host and use one of these schemes: `http`, `https`, `socks5`, `socks5h` (for example, `http://127.0.0.1:7890` or `socks5h://127.0.0.1:1080`).
+- When set, this proxy is used for both `auth login` OAuth requests and `serve` upstream forwarding requests.
 
 Note: callback defaults are already set for Codex OAuth, so most users do not need to edit the `oauth` block.
 
