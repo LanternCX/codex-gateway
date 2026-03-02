@@ -1,4 +1,4 @@
-name: Cross-platform Release
+name: Tag Release Pipeline
 
 run-name: Release ${{ github.ref_name }}
 
@@ -9,27 +9,54 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Run race tests
+        run: go test -race ./...
+
   build:
     name: Build ${{ matrix.artifact_suffix }}
+    needs: verify
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
-          - goos: linux
-            goarch: amd64
-            artifact_suffix: linux-amd64
-            binary_name: codex-gateway
           - goos: darwin
             goarch: arm64
-            artifact_suffix: macos-arm64
+            artifact_suffix: macos-arm
             binary_name: codex-gateway
+            archive_format: tar.gz
           - goos: windows
             goarch: amd64
-            artifact_suffix: windows-amd64
+            artifact_suffix: windows-x64
             binary_name: codex-gateway.exe
+            archive_format: zip
+          - goos: linux
+            goarch: amd64
+            artifact_suffix: linux-x64
+            binary_name: codex-gateway
+            archive_format: tar.gz
+          - goos: linux
+            goarch: arm64
+            artifact_suffix: linux-arm
+            binary_name: codex-gateway
+            archive_format: tar.gz
 
     steps:
       - name: Checkout repository
@@ -37,13 +64,7 @@ jobs:
 
       - name: Resolve Version
         id: version
-        shell: bash
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          else
-            echo "VERSION=nightly-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -57,28 +78,31 @@ jobs:
           mkdir -p dist package
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
             go build -trimpath -ldflags "-s -w" -o "package/${{ matrix.binary_name }}" ./cmd/codex-gateway
-          cp README.md config.example.yaml package/
+          cp README.md README.zh-CN.md config.example.yaml package/
 
       - name: Create archive
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${{ steps.version.outputs.VERSION }}"
-          ARCHIVE="codex-gateway-${VERSION}-${{ matrix.artifact_suffix }}.tar.gz"
-          tar -czf "dist/${ARCHIVE}" -C package .
+          BASENAME="codex-gateway-${VERSION}-${{ matrix.artifact_suffix }}"
+          if [[ "${{ matrix.archive_format }}" == "zip" ]]; then
+            (cd package && zip -r "../dist/${BASENAME}.zip" .)
+          else
+            tar -czf "dist/${BASENAME}.tar.gz" -C package .
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: codex-gateway-${{ steps.version.outputs.VERSION }}-${{ matrix.artifact_suffix }}
-          path: dist/*.tar.gz
+          path: dist/*
           if-no-files-found: error
 
   release:
     name: Publish Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
 
     steps:
       - name: Download all artifacts

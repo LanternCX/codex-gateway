@@ -41,4 +41,6 @@ go test -race ./...
 ## 发布流程
 
 - 在 `main` 打 `v*` 标签（例如 `v0.1.0`）。
-- 推送标签会触发 [.github/workflows/package.yml](../.github/workflows/package.yml) 自动构建跨平台产物并创建 GitHub 草稿发布。
+- 推送标签会触发 [`.github/workflows/package.yml`](../../.github/workflows/package.yml)，先执行 `go test ./...` 和 `go test -race ./...`，再进行打包。
+- 发布打包目标平台：`macos-arm`、`windows-x64`、`linux-x64`、`linux-arm`。
+- 每个发布包包含：可执行文件、`README.md`、`README.zh-CN.md`、`config.example.yaml`。

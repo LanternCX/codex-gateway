@@ -41,4 +41,6 @@ Examples:
 ## Release Workflow
 
 - Tag releases from `main` as `v*` (for example `v0.1.0`).
-- Tag push triggers [.github/workflows/package.yml](../.github/workflows/package.yml) to build cross-platform artifacts and draft a GitHub release.
+- Tag push triggers [`.github/workflows/package.yml`](../../.github/workflows/package.yml), which runs `go test ./...` and `go test -race ./...` before packaging.
+- Release build targets: `macos-arm`, `windows-x64`, `linux-x64`, `linux-arm`.
+- Each release archive includes: binary, `README.md`, `README.zh-CN.md`, and `config.example.yaml`.
