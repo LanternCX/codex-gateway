@@ -1,0 +1,375 @@
+openapi: 3.0.3
+info:
+  title: codex-gateway API
+  version: 0.1.0
+  description: |
+    OpenAI-compatible gateway API.
+    Default upstream mode is `codex_oauth`.
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local default server
+
+tags:
+  - name: System
+  - name: Models
+  - name: Chat
+
+paths:
+  /healthz:
+    get:
+      tags: [System]
+      summary: Health check
+      description: Returns gateway process health status.
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+
+  /v1/models:
+    get:
+      tags: [Models]
+      summary: List models
+      description: |
+        Lists models available to downstream clients.
+
+        - In `codex_oauth` mode, returns a gateway compatibility list.
+        - In `openai_api` mode, proxies upstream `/v1/models`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Model list response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelListResponse"
+              example:
+                object: list
+                data:
+                  - id: gpt-5.3-codex
+                    object: model
+                    created: 0
+                    owned_by: openai
+                  - id: gpt-5.2-codex
+                    object: model
+                    created: 0
+                    owned_by: openai
+        "401":
+          description: Missing or invalid downstream API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: invalid api key
+                  type: gateway_error
+                  code: invalid_api_key
+        "503":
+          description: OAuth token unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: oauth token unavailable, run auth login
+                  type: gateway_error
+                  code: oauth_unavailable
+        "502":
+          description: Upstream request failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: upstream request failed
+                  type: gateway_error
+                  code: upstream_unavailable
+
+  /v1/chat/completions:
+    post:
+      tags: [Chat]
+      summary: Create chat completion
+      description: |
+        OpenAI-compatible chat completions endpoint.
+
+        - In `codex_oauth` mode, the request is translated to Codex responses backend format.
+        - Non-stream request (`stream=false`) returns JSON completion.
+        - Stream request (`stream=true`) returns SSE chunks in OpenAI chat chunk format.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+            examples:
+              nonStream:
+                summary: Non-stream request
+                value:
+                  model: gpt-5.3-codex
+                  messages:
+                    - role: user
+                      content: Reply with exactly: hello
+                  stream: false
+              stream:
+                summary: Stream request
+                value:
+                  model: gpt-5.3-codex
+                  messages:
+                    - role: user
+                      content: Say hello
+                  stream: true
+      responses:
+        "200":
+          description: Completion response (JSON or SSE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+              example:
+                id: resp_07d941e7c010e3290169a52c332e10819188f8e4b992036ed6
+                object: chat.completion
+                created: 1772432435
+                model: gpt-5.3-codex
+                choices:
+                  - index: 0
+                    message:
+                      role: assistant
+                      content: hello
+                    finish_reason: stop
+                usage:
+                  prompt_tokens: 18
+                  completion_tokens: 5
+                  total_tokens: 23
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1772432435,"model":"gpt-5.3-codex","choices":[{"index":0,"delta":{"role":"assistant","content":"he"},"finish_reason":null}]}
+
+                data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1772432435,"model":"gpt-5.3-codex","choices":[{"index":0,"delta":{"content":"llo"},"finish_reason":null}]}
+
+                data: {"id":"chatcmpl-...","object":"chat.completion.chunk","created":1772432435,"model":"gpt-5.3-codex","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+                data: [DONE]
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: model is required
+                  type: gateway_error
+                  code: invalid_request
+        "401":
+          description: Missing or invalid downstream API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: invalid api key
+                  type: gateway_error
+                  code: invalid_api_key
+        "503":
+          description: OAuth token unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: oauth token unavailable, run auth login
+                  type: gateway_error
+                  code: oauth_unavailable
+        "502":
+          description: Upstream request failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: upstream request failed
+                  type: gateway_error
+                  code: upstream_unavailable
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    GatewayErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/GatewayError"
+
+    GatewayError:
+      type: object
+      required: [message, type, code]
+      properties:
+        message:
+          type: string
+        type:
+          type: string
+          enum: [gateway_error]
+        code:
+          type: string
+
+    Model:
+      type: object
+      required: [id, object, created, owned_by]
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: model
+        created:
+          type: integer
+          format: int64
+        owned_by:
+          type: string
+
+    ModelListResponse:
+      type: object
+      required: [object, data]
+      properties:
+        object:
+          type: string
+          example: list
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Model"
+
+    ChatMessage:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+        content:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+            - type: array
+              items:
+                oneOf:
+                  - type: string
+                  - type: object
+                    additionalProperties: true
+        name:
+          type: string
+
+    ChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      properties:
+        model:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        stream:
+          type: boolean
+          default: false
+        temperature:
+          type: number
+          format: float
+        top_p:
+          type: number
+          format: float
+        max_tokens:
+          type: integer
+          description: Accepted for compatibility; ignored in `codex_oauth` mode.
+        tools:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        tool_choice:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+
+    ChatCompletionChoice:
+      type: object
+      required: [index, message]
+      properties:
+        index:
+          type: integer
+        message:
+          type: object
+          required: [role, content]
+          properties:
+            role:
+              type: string
+              example: assistant
+            content:
+              type: string
+        finish_reason:
+          type: string
+          nullable: true
+
+    ChatCompletionUsage:
+      type: object
+      required: [prompt_tokens, completion_tokens, total_tokens]
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+
+    ChatCompletionResponse:
+      type: object
+      required: [id, object, created, model, choices]
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: chat.completion
+        created:
+          type: integer
+          format: int64
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatCompletionChoice"
+        usage:
+          $ref: "#/components/schemas/ChatCompletionUsage"

@@ -1,0 +1,47 @@
+server:
+  listen: ":8080"
+
+auth:
+  # Fixed API key used by downstream clients when calling this gateway.
+  downstream_api_key: "replace-with-your-fixed-key"
+
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+  # Log format: text, json
+  format: "text"
+
+oauth:
+  # Callback mode defaults are already set for Codex OAuth.
+  # You can keep this block as-is unless you need custom endpoints.
+  client_id: "app_EMoamEEZ73f0CkXaXp7hrann"
+  client_secret: ""
+  authorize_endpoint: "https://auth.openai.com/oauth/authorize"
+  token_endpoint: "https://auth.openai.com/oauth/token"
+  redirect_host: "localhost"
+  redirect_port: 1455
+  redirect_path: "/auth/callback"
+  originator: "opencode"
+
+  scopes:
+    - "openid"
+    - "profile"
+    - "email"
+    - "offline_access"
+  audience: ""
+
+upstream:
+  # codex_oauth (default): use ChatGPT Codex backend with OAuth token
+  # openai_api: use upstream base_url directly as traditional OpenAI API proxy
+  mode: "codex_oauth"
+
+  # Used when mode=openai_api
+  base_url: "https://api.openai.com"
+
+  # Used when mode=codex_oauth
+  codex_base_url: "https://chatgpt.com"
+  codex_responses_path: "/backend-api/codex/responses"
+
+  models_path: "/v1/models"
+  chat_completions_path: "/v1/chat/completions"
+  timeout_seconds: 60

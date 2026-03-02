@@ -1,0 +1,140 @@
+# codex-gateway
+
+语言： [English](README.md) | [简体中文](README.zh-CN.md)
+
+快速导航： [功能](#功能) · [运行目录](#运行目录) · [快速开始](#快速开始) · [API 参考](#api-参考) · [错误码](#错误码) · [开发](#开发) · [文档索引](docs/zh-CN/README.md)
+
+这是一个自托管网关，用于：
+
+- 接收 OpenAI 兼容的下游请求（`/v1/models`、`/v1/chat/completions`）
+- 通过交互式 CLI OAuth 登录获取上游访问令牌
+- 使用配置中的固定 API Key 保护下游访问
+
+## 功能
+
+- 默认交互式 OAuth Callback 登录：`codex-gateway auth login`
+- 运行目录存储（`config.yaml`、`oauth-token.json`）
+- 默认上游模式是 `codex_oauth`（兼容 ChatGPT OAuth token）
+- OpenAI 兼容接口：
+  - `GET /v1/models`
+  - `POST /v1/chat/completions`（支持流式透传）
+  - 在 `codex_oauth` 模式下，`/v1/models` 返回兼容模型列表，`/v1/chat/completions` 会转换为 Codex responses 后端请求。
+- 固定下游 API Key 鉴权：`Authorization: Bearer <fixed_key>`
+- 上游 OAuth 令牌自动刷新
+- 结构化日志（可配置 `logging.level` 与 `logging.format`）
+- 健康检查接口：`GET /healthz`
+
+## 文档
+
+- 文档索引： [docs/zh-CN/README.md](docs/zh-CN/README.md)
+- 架构说明： [docs/zh-CN/architecture.md](docs/zh-CN/architecture.md)
+- API 参考： [docs/zh-CN/api-reference.md](docs/zh-CN/api-reference.md)
+- OpenAPI 规范： [docs/openapi.yaml](docs/openapi.yaml)
+- OAuth 配置： [docs/zh-CN/oauth-setup.md](docs/zh-CN/oauth-setup.md)
+- 隐私边界： [docs/zh-CN/privacy-boundary.md](docs/zh-CN/privacy-boundary.md)
+- Git 工作流： [docs/zh-CN/git-flow.md](docs/zh-CN/git-flow.md)
+- English docs： [docs/en/README.md](docs/en/README.md)
+
+## 运行目录
+
+默认情况下，运行文件基于 `--workdir`（默认为当前目录）解析：
+
+- `config.yaml`
+- `oauth-token.json`
+- 结构化日志输出到 stdout（`logging.level`、`logging.format`）
+
+运行路径策略：
+
+- `--config` 必须指向 `--workdir` 内部的文件
+- 网关生成的运行时文件仅写入 `--workdir`
+
+上游模式：
+
+- `upstream.mode: codex_oauth`（默认）：将 chat-completions 转换后发送到 Codex backend responses
+- `upstream.mode: openai_api`：直接代理到 `upstream.base_url`
+
+## 快速开始
+
+1）构建：
+
+```bash
+go build -o codex-gateway ./cmd/codex-gateway
+```
+
+2）准备配置：
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+然后编辑 `config.yaml`，至少填写固定下游 key 和上游 `base_url`。
+对于 Codex OAuth 的 callback 模式，OAuth 端点和 `client_id` 已有默认值。
+
+3）执行 OAuth 登录（交互式）：
+
+```bash
+./codex-gateway auth login --workdir . --config config.yaml
+```
+
+该命令会启动本地 callback 监听并尝试自动打开浏览器授权页面。
+
+4）启动服务：
+
+```bash
+./codex-gateway serve --workdir . --config config.yaml
+```
+
+## API 参考
+
+- 正式 API 文档： [docs/zh-CN/api-reference.md](docs/zh-CN/api-reference.md)
+- 可导入 Apifox 的 OpenAPI 文件： [docs/openapi.yaml](docs/openapi.yaml)
+
+接口摘要：
+
+- `GET /healthz`
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+
+请求 payload 示例（`POST /v1/chat/completions`）：
+
+```json
+{
+  "model": "gpt-5.3-codex",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Reply with exactly: hello"
+    }
+  ],
+  "stream": false
+}
+```
+
+## 错误码
+
+网关错误返回 OpenAI 风格 envelope：
+
+```json
+{
+  "error": {
+    "message": "...",
+    "type": "gateway_error",
+    "code": "..."
+  }
+}
+```
+
+常见状态码：
+
+- `401`：下游固定 API Key 缺失或错误
+- `503`：OAuth 令牌不可用或刷新失败
+- `502`：上游网络/服务错误
+
+## 开发
+
+运行测试：
+
+```bash
+go test ./...
+go test -race ./...
+```

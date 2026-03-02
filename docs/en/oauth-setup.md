@@ -1,0 +1,73 @@
+# OAuth Setup
+
+Language: [English](oauth-setup.md) | [简体中文](../zh-CN/oauth-setup.md)
+
+Docs: [Index](README.md) · [Architecture](architecture.md) · [Privacy Boundary](privacy-boundary.md) · [Git Flow](git-flow.md)
+
+This guide configures `codex-gateway` OAuth login for upstream access.
+
+Default mode is callback-based browser login with local redirect.
+
+## 1) Prepare Runtime Config
+
+Copy sample config and edit values:
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+`--config` must reference a file inside `--workdir`.
+
+Required minimum config for callback mode:
+
+- `auth.downstream_api_key`
+- `upstream.mode` (default `codex_oauth`)
+
+Optional `logging` settings:
+
+- `level` (`debug`, `info`, `warn`, `error`)
+- `format` (`text`, `json`)
+
+Optional `oauth` overrides:
+
+- `client_id`
+- `authorize_endpoint`
+- `token_endpoint`
+- `redirect_host`
+- `redirect_port`
+- `redirect_path`
+- `scopes`
+- `audience`
+- `client_secret` (required by some providers)
+
+Note: callback defaults are already set for Codex OAuth, so most users do not need to edit the `oauth` block.
+
+Upstream mode options:
+
+- `codex_oauth` (default): use `https://chatgpt.com/backend-api/codex/responses` compatibility flow
+- `openai_api`: direct proxy mode using `upstream.base_url`
+
+## 2) Run Interactive Callback Login (Default)
+
+```bash
+./codex-gateway auth login --workdir . --config config.yaml
+```
+
+The command will:
+
+1. start a local callback listener (default: `localhost:1455/auth/callback`)
+2. print and open browser authorization URL
+3. receive callback code and exchange it for OAuth tokens
+4. write tokens to `./oauth-token.json`
+
+## 3) Start Gateway Server
+
+```bash
+./codex-gateway serve --workdir . --config config.yaml
+```
+
+## Troubleshooting
+
+- `oauth token unavailable, run auth login`: token file missing, unreadable, or refresh failed.
+- `missing required field`: check `config.yaml` required fields.
+- callback login timeout: restart `auth login` and complete browser authorization promptly.
