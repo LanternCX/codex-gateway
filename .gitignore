@@ -1,0 +1,19 @@
+# Build artifacts
+/codex-gateway
+/dist/
+/build/
+*.exe
+*.out
+*.test
+
+# Runtime artifacts
+/config.yaml
+/oauth-token.json
+/logs/
+
+# Tooling
+/.opencode/node_modules/
+/.opencode/bun.lock
+
+# OS files
+.DS_Store
