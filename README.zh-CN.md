@@ -22,6 +22,7 @@
 - 固定下游 API Key 鉴权：`Authorization: Bearer <fixed_key>`
 - 上游 OAuth 令牌自动刷新
 - 结构化日志（可配置 level/format/output/color 与文件滚动策略）
+- 默认 stdout 日志为人类可读文本格式，并自动检测终端颜色输出
 - 请求关联追踪：支持 `X-Request-ID`（缺失时自动生成）
 - 健康检查接口：`GET /healthz`
 
@@ -95,6 +96,11 @@ network:
 ```bash
 ./codex-gateway serve --workdir . --config config.yaml
 ```
+
+启动后日志会包含：
+
+- `api_prefix`（例如 `http://127.0.0.1:8080/v1`）
+- 通过启动探测（`GET /v1/models`）发现的 `available_models`
 
 ## API 参考
 

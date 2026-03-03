@@ -118,9 +118,23 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 	defer stop()
 
 	errCh := make(chan error, 1)
-	logger.InfoContext(ctx, "gateway server starting", "listen", cfg.Server.Listen, "workdir", paths.Workdir, "upstream_mode", cfg.Upstream.Mode)
+	apiPrefix, probePrefix, prefixErr := buildServePrefixes(cfg.Server.Listen)
+	if prefixErr != nil {
+		logger.WarnContext(ctx, "failed to parse listen address for startup metadata", "listen", cfg.Server.Listen, "error", prefixErr)
+	}
+	logger.InfoContext(ctx, "gateway server starting", "listen", cfg.Server.Listen, "workdir", paths.Workdir, "upstream_mode", cfg.Upstream.Mode, "api_prefix", apiPrefix)
 	go func() {
 		errCh <- httpServer.ListenAndServe()
+	}()
+
+	go func() {
+		discover := func(discoverCtx context.Context, prefix, apiKey string) ([]string, error) {
+			probeCtx, cancel := context.WithTimeout(discoverCtx, defaultStartupProbeTTL)
+			defer cancel()
+			return discoverAvailableModels(probeCtx, &http.Client{Timeout: defaultStartupProbeTTL}, prefix, apiKey)
+		}
+
+		logServeStartupInfo(ctx, logger, probePrefix, cfg.Auth.DownstreamAPIKey, discover, 3, 200*time.Millisecond)
 	}()
 
 	select {

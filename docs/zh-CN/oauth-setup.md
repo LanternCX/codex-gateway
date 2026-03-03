@@ -28,9 +28,9 @@ callback 模式下最小必填配置：
 可选 `logging` 配置：
 
 - `level`（`debug`、`info`、`warn`、`error`）
-- `format`（`text`、`json`）
+- `format`（`text`、`json`）—— 默认 `text`
 - `output`（`stdout`、`file`、`both`）
-- `color`（`auto`、`always`、`never`，仅在 `text` 格式生效）
+- `color`（`auto`、`always`、`never`，仅在 `text` 格式生效）—— 默认 `auto`
 - `file.dir`（为空时默认 `<workdir>/logs`）
 - `file.name`
 - `file.max_size_mb`、`file.max_backups`、`file.max_age_days`
@@ -85,6 +85,11 @@ network:
 ```bash
 ./codex-gateway serve --workdir . --config config.yaml
 ```
+
+启动后日志会包含：
+
+- `api_prefix`（例如 `http://127.0.0.1:8080/v1`）
+- 通过启动探测（`GET /v1/models`）发现的 `available_models`
 
 ## 故障排查
 

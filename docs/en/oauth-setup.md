@@ -28,9 +28,9 @@ Set `upstream.base_url` only when using `upstream.mode: openai_api`.
 Optional `logging` settings:
 
 - `level` (`debug`, `info`, `warn`, `error`)
-- `format` (`text`, `json`)
+- `format` (`text`, `json`) — default is `text`
 - `output` (`stdout`, `file`, `both`)
-- `color` (`auto`, `always`, `never`, only effective in `text` format)
+- `color` (`auto`, `always`, `never`, only effective in `text` format) — default is `auto`
 - `file.dir` (empty means `<workdir>/logs`)
 - `file.name`
 - `file.max_size_mb`, `file.max_backups`, `file.max_age_days`
@@ -85,6 +85,11 @@ The command will:
 ```bash
 ./codex-gateway serve --workdir . --config config.yaml
 ```
+
+Startup logs include:
+
+- `api_prefix` (for example `http://127.0.0.1:8080/v1`)
+- `available_models` discovered via a startup probe (`GET /v1/models`)
 
 ## Troubleshooting
 

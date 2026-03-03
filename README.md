@@ -22,6 +22,7 @@ A self-hosted gateway that:
 - Fixed downstream API key validation via `Authorization: Bearer <fixed_key>`
 - Automatic OAuth refresh before upstream calls
 - Structured logging with configurable level/format/output/color and file rotation settings
+- Default stdout logging is human-readable text with terminal color auto-detection
 - Request correlation via `X-Request-ID` (auto-generated when missing)
 - Health endpoint: `GET /healthz`
 
@@ -95,6 +96,11 @@ This command starts a local callback listener and opens the browser authorizatio
 ```bash
 ./codex-gateway serve --workdir . --config config.yaml
 ```
+
+After startup, logs include:
+
+- `api_prefix` (for example `http://127.0.0.1:8080/v1`)
+- `available_models` discovered via a startup probe (`GET /v1/models`)
 
 ## API Reference
 

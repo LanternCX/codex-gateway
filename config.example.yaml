@@ -19,7 +19,7 @@ logging:
   # Log level: debug, info, warn, error
   level: "info"
   # Log format: text, json
-  format: "json"
+  format: "text"
   # Log output: stdout, file, both
   output: "stdout"
   # Log color mode for text format: auto, always, never
