@@ -66,4 +66,5 @@ upstream:
 
   models_path: "/v1/models"
   chat_completions_path: "/v1/chat/completions"
+  responses_path: "/v1/responses"
   timeout_seconds: 60

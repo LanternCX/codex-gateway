@@ -56,6 +56,40 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	s.proxy(w, r, http.MethodPost, s.deps.ChatCompletionsPath, body, r.Header.Get("Content-Type"), nil)
 }
 
+func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeOpenAIError(w, http.StatusBadRequest, "invalid_request", "failed to read request body")
+		return
+	}
+
+	if len(strings.TrimSpace(string(body))) > 0 && !json.Valid(body) {
+		writeOpenAIError(w, http.StatusBadRequest, "invalid_request", "invalid request body json")
+		return
+	}
+
+	if s.deps.CodexCompat {
+		s.proxy(
+			w,
+			r,
+			http.MethodPost,
+			s.deps.CodexResponsesPath,
+			body,
+			r.Header.Get("Content-Type"),
+			map[string]string{"originator": s.deps.CodexOriginator},
+		)
+		return
+	}
+
+	s.proxy(w, r, http.MethodPost, s.deps.ResponsesPath, body, r.Header.Get("Content-Type"), nil)
+}
+
 func (s *Server) handleChatCompletionsCodex(w http.ResponseWriter, r *http.Request, rawBody []byte) {
 	var chatReq chatCompletionRequest
 	if err := json.Unmarshal(rawBody, &chatReq); err != nil {

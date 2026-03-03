@@ -4,7 +4,7 @@
 
 这是一个自托管网关，用于：
 
-- 接收 OpenAI 兼容的下游请求（`/v1/models`、`/v1/chat/completions`）
+- 接收 OpenAI 兼容的下游请求（`/v1/models`、`/v1/chat/completions`、`/v1/responses`）
 - 通过交互式 CLI OAuth 登录获取上游访问令牌
 - 使用配置中的固定 API Key 保护下游访问
 
@@ -15,8 +15,10 @@
 - 默认上游模式是 `codex_oauth`（兼容 ChatGPT OAuth token）
 - OpenAI 兼容接口：
   - `GET /v1/models`
-  - `POST /v1/chat/completions`（支持流式透传）
-  - 在 `codex_oauth` 模式下，`/v1/models` 返回兼容模型列表，`/v1/chat/completions` 会转换为 Codex responses 后端请求。
+  - `POST /v1/chat/completions`（支持流式返回）
+  - `POST /v1/responses`（支持 JSON 与流式透传）
+  - 在 `codex_oauth` 模式下，`/v1/models` 返回兼容模型列表；`/v1/chat/completions` 会转换为 Codex responses 后端请求并将结果映射回 OpenAI chat 格式；`/v1/responses` 会代理到 Codex responses 后端路径（默认 `/backend-api/codex/responses`，可通过 `upstream.codex_responses_path` 配置）。
+  - 在 `openai_api` 模式下，`/v1/chat/completions` 与 `/v1/responses` 会代理到上游路径。
 - 固定下游 API Key 鉴权：`Authorization: Bearer <fixed_key>`
 - 上游 OAuth 令牌自动刷新
 - 结构化日志（可配置 level/format/output/color 与文件滚动策略）
@@ -104,6 +106,37 @@ network:
 - `GET /healthz`
 - `GET /v1/models`
 - `POST /v1/chat/completions`
+- `POST /v1/responses`
+
+## OpenCode 自定义 Provider
+
+当 OpenCode 客户端连接本网关并希望获得类似 codex 的 responses/thinking 行为时，建议自定义 provider 使用 `@ai-sdk/openai`（而不是泛 OpenAI-compatible 适配器）。
+
+`opencode.json` 示例：
+
+```json
+{
+  "providers": {
+    "gateway": {
+      "package": "@ai-sdk/openai",
+      "name": "Gateway",
+      "options": {
+        "baseURL": "http://127.0.0.1:8080/v1",
+        "apiKey": "<downstream_api_key>"
+      }
+    }
+  },
+  "models": {
+    "gateway/gpt-5.3-codex": {
+      "reasoning": true,
+      "limit": {
+        "input": 200000,
+        "output": 32000
+      }
+    }
+  }
+}
+```
 
 请求 payload 示例（`POST /v1/chat/completions`）：
 
@@ -138,7 +171,12 @@ network:
 
 - `401`：下游固定 API Key 缺失或错误
 - `503`：OAuth 令牌不可用或刷新失败
-- `502`：上游网络/服务错误
+- `502`：上游网络/服务错误（`upstream_unavailable` 或 `upstream_error`）
+
+说明：
+
+- 上述 envelope 仅适用于网关自身生成的错误。
+- 上游 4xx 响应会原样透传，可能不符合网关 envelope。
 
 ## 开发
 

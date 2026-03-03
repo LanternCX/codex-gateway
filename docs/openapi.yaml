@@ -5,6 +5,7 @@ info:
   description: |
     OpenAI-compatible gateway API.
     Default upstream mode is `codex_oauth`.
+    Gateway-generated errors use `GatewayErrorEnvelope`; upstream 4xx responses may be passed through as-is.
 servers:
   - url: http://127.0.0.1:8080
     description: Local default server
@@ -13,6 +14,7 @@ tags:
   - name: System
   - name: Models
   - name: Chat
+  - name: Responses
 
 paths:
   /healthz:
@@ -51,7 +53,7 @@ paths:
         - bearerAuth: []
       responses:
         "200":
-          description: Model list response
+          description: Model list response (partial example shown)
           headers:
             X-Request-ID:
               $ref: "#/components/headers/RequestIDHeader"
@@ -93,7 +95,7 @@ paths:
                   type: gateway_error
                   code: oauth_unavailable
         "502":
-          description: Upstream request failure
+          description: Upstream request failure (`code` may be `upstream_unavailable` or `upstream_error`)
           content:
             application/json:
               schema:
@@ -114,6 +116,7 @@ paths:
         - In `codex_oauth` mode, the request is translated to Codex responses backend format.
         - Non-stream request (`stream=false`) returns JSON completion.
         - Stream request (`stream=true`) returns SSE chunks in OpenAI chat chunk format.
+        - Upstream 4xx responses are relayed as-is.
       parameters:
         - $ref: "#/components/parameters/RequestIDHeader"
       security:
@@ -211,7 +214,7 @@ paths:
                   type: gateway_error
                   code: oauth_unavailable
         "502":
-          description: Upstream request failure
+          description: Upstream request failure (`code` may be `upstream_unavailable` or `upstream_error`)
           content:
             application/json:
               schema:
@@ -221,6 +224,114 @@ paths:
                   message: upstream request failed
                   type: gateway_error
                   code: upstream_unavailable
+
+  /v1/responses:
+    post:
+      tags: [Responses]
+      summary: Create response
+      description: |
+        OpenAI responses endpoint proxy.
+
+        - Requires `Authorization: Bearer <downstream_api_key>` (fixed API key from gateway config).
+        - Gateway validates non-empty request body as JSON; invalid JSON returns `400 invalid_request`.
+        - Supports non-stream JSON and stream (`text/event-stream`) pass-through.
+        - In `codex_oauth` mode, proxies to Codex backend responses path (`/backend-api/codex/responses` by default, configurable via `upstream.codex_responses_path`).
+        - In `openai_api` mode, proxies upstream responses path (`/v1/responses` by default or configured path).
+        - Upstream 4xx responses are relayed as-is.
+      parameters:
+        - $ref: "#/components/parameters/RequestIDHeader"
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResponsesRequest"
+            examples:
+              nonStream:
+                summary: Non-stream request
+                value:
+                  model: gpt-5.3-codex
+                  input: hello
+                  stream: false
+              stream:
+                summary: Stream request
+                value:
+                  model: gpt-5.3-codex
+                  input:
+                    - role: user
+                      content: Say hello
+                  stream: true
+      responses:
+        "200":
+          description: Upstream response (JSON or SSE)
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestIDHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponsesJSONResponse"
+              example:
+                id: resp_123
+                object: response
+                output:
+                  - type: message
+                    role: assistant
+                    content:
+                      - type: output_text
+                        text: hello
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                data: {"id":"resp_1","object":"response.chunk"}
+
+                data: [DONE]
+        "400":
+          description: Invalid request body JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: invalid request body json
+                  type: gateway_error
+                  code: invalid_request
+        "401":
+          description: Missing or invalid downstream API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: invalid api key
+                  type: gateway_error
+                  code: invalid_api_key
+        "503":
+          description: OAuth token unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: oauth token unavailable, run auth login
+                  type: gateway_error
+                  code: oauth_unavailable
+        "502":
+          description: Upstream request failure (`code` may be `upstream_unavailable` or `upstream_error`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayErrorEnvelope"
+              example:
+                error:
+                  message: upstream service error
+                  type: gateway_error
+                  code: upstream_error
 
 components:
   parameters:
@@ -403,3 +514,13 @@ components:
             $ref: "#/components/schemas/ChatCompletionChoice"
         usage:
           $ref: "#/components/schemas/ChatCompletionUsage"
+
+    ResponsesRequest:
+      type: object
+      additionalProperties: true
+      description: Raw request body forwarded to the upstream responses endpoint.
+
+    ResponsesJSONResponse:
+      type: object
+      additionalProperties: true
+      description: Raw JSON response body from the upstream responses endpoint.
