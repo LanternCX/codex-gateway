@@ -65,6 +65,7 @@ type UpstreamConfig struct {
 	BaseURL             string `yaml:"base_url"`
 	ModelsPath          string `yaml:"models_path"`
 	ChatCompletionsPath string `yaml:"chat_completions_path"`
+	ResponsesPath       string `yaml:"responses_path"`
 	Mode                string `yaml:"mode"`
 	CodexBaseURL        string `yaml:"codex_base_url"`
 	CodexResponsesPath  string `yaml:"codex_responses_path"`
@@ -97,6 +98,10 @@ func applyDefaults(cfg *Config) {
 
 	if cfg.Upstream.ChatCompletionsPath == "" {
 		cfg.Upstream.ChatCompletionsPath = "/v1/chat/completions"
+	}
+
+	if cfg.Upstream.ResponsesPath == "" {
+		cfg.Upstream.ResponsesPath = "/v1/responses"
 	}
 
 	if cfg.Upstream.TimeoutSeconds == 0 {

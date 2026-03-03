@@ -46,6 +46,71 @@ func TestServerRoutes_ProtectedRouteRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestServerRoutes_ResponsesRouteRequiresAuth(t *testing.T) {
+	h := New(Dependencies{
+		FixedAPIKey:    "fixed-key",
+		TokenProvider:  staticTokenProvider{token: "oauth-token"},
+		UpstreamClient: upstream.NewClient("https://example.com", 0),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	res := httptest.NewRecorder()
+
+	h.ServeHTTP(res, req)
+
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", res.Code)
+	}
+}
+
+func TestServerRoutes_ResponsesRouteRejectsGet(t *testing.T) {
+	h := New(Dependencies{
+		FixedAPIKey:    "fixed-key",
+		TokenProvider:  staticTokenProvider{token: "oauth-token"},
+		UpstreamClient: upstream.NewClient("https://example.com", 0),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	req.Header.Set("Authorization", "Bearer fixed-key")
+	res := httptest.NewRecorder()
+
+	h.ServeHTTP(res, req)
+
+	if res.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", res.Code)
+	}
+
+	if got := res.Header().Get("Allow"); got != http.MethodPost {
+		t.Fatalf("expected Allow header %q, got %q", http.MethodPost, got)
+	}
+}
+
+func TestServerRoutes_ResponsesRouteAuthenticatedPostProxies(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer up.Close()
+
+	h := New(Dependencies{
+		FixedAPIKey:    "fixed-key",
+		TokenProvider:  staticTokenProvider{token: "oauth-token"},
+		UpstreamClient: upstream.NewClient(up.URL, 0),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req.Header.Set("Authorization", "Bearer fixed-key")
+	res := httptest.NewRecorder()
+
+	h.ServeHTTP(res, req)
+
+	if res.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", res.Code)
+	}
+}
+
 func TestServerRoutes_LogsRequests(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))

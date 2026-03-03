@@ -22,6 +22,7 @@ oauth:
     - "openid"
 upstream:
   base_url: "https://api.example.com"
+  responses_path: "/custom/responses"
 `
 
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -47,6 +48,10 @@ upstream:
 
 	if cfg.Upstream.ChatCompletionsPath != "/v1/chat/completions" {
 		t.Fatalf("expected default chat path, got %q", cfg.Upstream.ChatCompletionsPath)
+	}
+
+	if cfg.Upstream.ResponsesPath != "/custom/responses" {
+		t.Fatalf("expected custom responses path, got %q", cfg.Upstream.ResponsesPath)
 	}
 }
 
@@ -119,6 +124,10 @@ upstream:
 
 	if cfg.Upstream.CodexBaseURL != "https://chatgpt.com" {
 		t.Fatalf("expected default upstream.codex_base_url, got %q", cfg.Upstream.CodexBaseURL)
+	}
+
+	if cfg.Upstream.ResponsesPath != "/v1/responses" {
+		t.Fatalf("expected default upstream.responses_path, got %q", cfg.Upstream.ResponsesPath)
 	}
 }
 

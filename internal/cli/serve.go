@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -106,17 +107,7 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 		upstream.WithLogger(upstreamLogger),
 	)
 
-	handler := server.New(server.Dependencies{
-		FixedAPIKey:         cfg.Auth.DownstreamAPIKey,
-		ModelsPath:          cfg.Upstream.ModelsPath,
-		ChatCompletionsPath: cfg.Upstream.ChatCompletionsPath,
-		CodexCompat:         cfg.Upstream.Mode == "codex_oauth",
-		CodexResponsesPath:  cfg.Upstream.CodexResponsesPath,
-		CodexOriginator:     cfg.OAuth.Originator,
-		Logger:              serverLogger,
-		TokenProvider:       manager,
-		UpstreamClient:      upstreamClient,
-	})
+	handler := server.New(buildServerDependencies(cfg, manager, upstreamClient, serverLogger))
 
 	httpServer := &http.Server{
 		Addr:    cfg.Server.Listen,
@@ -150,5 +141,20 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 		}
 		logger.InfoContext(ctx, "gateway server shutdown completed")
 		return nil
+	}
+}
+
+func buildServerDependencies(cfg config.Config, tokenProvider server.TokenProvider, upstreamClient server.UpstreamClient, logger *slog.Logger) server.Dependencies {
+	return server.Dependencies{
+		FixedAPIKey:         cfg.Auth.DownstreamAPIKey,
+		ModelsPath:          cfg.Upstream.ModelsPath,
+		ChatCompletionsPath: cfg.Upstream.ChatCompletionsPath,
+		ResponsesPath:       cfg.Upstream.ResponsesPath,
+		CodexCompat:         cfg.Upstream.Mode == "codex_oauth",
+		CodexResponsesPath:  cfg.Upstream.CodexResponsesPath,
+		CodexOriginator:     cfg.OAuth.Originator,
+		Logger:              logger,
+		TokenProvider:       tokenProvider,
+		UpstreamClient:      upstreamClient,
 	}
 }

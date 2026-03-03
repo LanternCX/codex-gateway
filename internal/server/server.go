@@ -21,6 +21,7 @@ type Dependencies struct {
 	FixedAPIKey         string
 	ModelsPath          string
 	ChatCompletionsPath string
+	ResponsesPath       string
 	CodexCompat         bool
 	CodexResponsesPath  string
 	CodexOriginator     string
@@ -41,6 +42,9 @@ func New(deps Dependencies) http.Handler {
 	if deps.ChatCompletionsPath == "" {
 		deps.ChatCompletionsPath = "/v1/chat/completions"
 	}
+	if deps.ResponsesPath == "" {
+		deps.ResponsesPath = "/v1/responses"
+	}
 	if deps.CodexResponsesPath == "" {
 		deps.CodexResponsesPath = "/backend-api/codex/responses"
 	}
@@ -59,6 +63,7 @@ func New(deps Dependencies) http.Handler {
 	auth := AuthMiddleware(deps.FixedAPIKey)
 	mux.Handle(normalizePath(deps.ModelsPath), auth(http.HandlerFunc(srv.handleModels)))
 	mux.Handle(normalizePath(deps.ChatCompletionsPath), auth(http.HandlerFunc(srv.handleChatCompletions)))
+	mux.Handle(normalizePath(deps.ResponsesPath), auth(http.HandlerFunc(srv.handleResponses)))
 
 	return RequestLoggingMiddleware(deps.Logger)(mux)
 }
