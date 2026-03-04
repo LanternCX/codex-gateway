@@ -21,9 +21,9 @@ logging:
   # Log format: text, json
   format: "text"
   # Log output: stdout, file, both
-  output: "stdout"
+  output: "both"
   # Log color mode for text format: auto, always, never
-  color: "auto"
+  color: "always"
   file:
     # Empty means <workdir>/logs
     dir: ""
