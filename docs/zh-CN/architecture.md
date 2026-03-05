@@ -21,14 +21,15 @@
 
 - `config.yaml`：服务、鉴权、OAuth、上游配置
 - `oauth-token.json`：持久化的 access/refresh token
-- stdout 日志：由 `logging.level` 与 `logging.format` 控制的结构化输出
+- 结构化日志：由 `logging.output` 控制输出到 `stdout`、`file` 或 `both`；文本颜色由 `logging.color` 控制
+- 启用文件日志时，默认目录为 `<workdir>/logs`
 
 ## 包边界
 
 - `cmd/codex-gateway`：程序入口
 - `internal/cli`：Cobra 命令装配（`serve`、`auth login`）
 - `internal/config`：YAML 配置加载与校验
-- `internal/logging`：结构化日志构建与日志级别/格式处理
+- `internal/logging`：日志构建、敏感字段脱敏、请求 ID 透传辅助与多输出处理
 - `internal/auth`：令牌持久化与刷新策略管理
 - `internal/oauth`：OAuth Device Flow 与 refresh 请求
 - `internal/upstream`：上游 HTTP 客户端封装

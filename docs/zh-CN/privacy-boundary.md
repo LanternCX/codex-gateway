@@ -27,7 +27,7 @@
 
 - 下游固定 API Key 仅在本地校验。
 - OAuth access token 与 refresh token 保存在本地 `oauth-token.json`。
-- 日志不得输出下游 API Key、access token、refresh token。
+- 日志系统会对已知敏感字段做脱敏（例如 `authorization`、`api_key`、`access_token`、`refresh_token`、`client_secret`），避免密钥泄露。
 
 ## 运维责任
 

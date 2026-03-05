@@ -31,6 +31,7 @@ Use Angular-style conventional commits:
 - `fix:` behavior correction
 - `docs:` documentation only
 - `chore:` tooling or maintenance
+- Agent-authored commits must include: `Co-authored-by: opencode-agent[bot] <opencode-agent[bot]@users.noreply.github.com>`
 
 Examples:
 

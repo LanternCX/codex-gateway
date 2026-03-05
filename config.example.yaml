@@ -1,6 +1,16 @@
 server:
   listen: ":8080"
 
+network:
+  # Optional outbound proxy for OAuth and upstream requests.
+  # Must be an absolute URL with host.
+  # Supported schemes: http, https, socks5, socks5h.
+  # Example: http://127.0.0.1:7890 or socks5h://127.0.0.1:1080.
+  # Empty or unset means no explicit proxy.
+  proxy_url: ""
+  # Example:
+  # proxy_url: "http://127.0.0.1:7890"
+
 auth:
   # Fixed API key used by downstream clients when calling this gateway.
   downstream_api_key: "replace-with-your-fixed-key"
@@ -10,6 +20,18 @@ logging:
   level: "info"
   # Log format: text, json
   format: "text"
+  # Log output: stdout, file, both
+  output: "both"
+  # Log color mode for text format: auto, always, never
+  color: "always"
+  file:
+    # Empty means <workdir>/logs
+    dir: ""
+    name: "codex-gateway.log"
+    max_size_mb: 100
+    max_backups: 10
+    max_age_days: 7
+    compress: false
 
 oauth:
   # Callback mode defaults are already set for Codex OAuth.
@@ -44,4 +66,5 @@ upstream:
 
   models_path: "/v1/models"
   chat_completions_path: "/v1/chat/completions"
+  responses_path: "/v1/responses"
   timeout_seconds: 60

@@ -2,11 +2,9 @@
 
 语言： [English](README.md) | [简体中文](README.zh-CN.md)
 
-快速导航： [功能](#功能) · [运行目录](#运行目录) · [快速开始](#快速开始) · [API 参考](#api-参考) · [错误码](#错误码) · [开发](#开发) · [文档索引](docs/zh-CN/README.md)
-
 这是一个自托管网关，用于：
 
-- 接收 OpenAI 兼容的下游请求（`/v1/models`、`/v1/chat/completions`）
+- 接收 OpenAI 兼容的下游请求（`/v1/models`、`/v1/chat/completions`、`/v1/responses`）
 - 通过交互式 CLI OAuth 登录获取上游访问令牌
 - 使用配置中的固定 API Key 保护下游访问
 
@@ -17,11 +15,15 @@
 - 默认上游模式是 `codex_oauth`（兼容 ChatGPT OAuth token）
 - OpenAI 兼容接口：
   - `GET /v1/models`
-  - `POST /v1/chat/completions`（支持流式透传）
-  - 在 `codex_oauth` 模式下，`/v1/models` 返回兼容模型列表，`/v1/chat/completions` 会转换为 Codex responses 后端请求。
+  - `POST /v1/chat/completions`（支持流式返回）
+  - `POST /v1/responses`（支持 JSON 与流式透传）
+  - 在 `codex_oauth` 模式下，`/v1/models` 返回兼容模型列表；`/v1/chat/completions` 会转换为 Codex responses 后端请求并将结果映射回 OpenAI chat 格式；`/v1/responses` 会代理到 Codex responses 后端路径（默认 `/backend-api/codex/responses`，可通过 `upstream.codex_responses_path` 配置）。
+  - 在 `openai_api` 模式下，`/v1/chat/completions` 与 `/v1/responses` 会代理到上游路径。
 - 固定下游 API Key 鉴权：`Authorization: Bearer <fixed_key>`
 - 上游 OAuth 令牌自动刷新
-- 结构化日志（可配置 `logging.level` 与 `logging.format`）
+- 结构化日志（可配置 level/format/output/color 与文件滚动策略）
+- 默认 stdout 日志为人类可读文本格式，并自动检测终端颜色输出
+- 请求关联追踪：支持 `X-Request-ID`（缺失时自动生成）
 - 健康检查接口：`GET /healthz`
 
 ## 文档
@@ -41,7 +43,8 @@
 
 - `config.yaml`
 - `oauth-token.json`
-- 结构化日志输出到 stdout（`logging.level`、`logging.format`）
+- 结构化日志可输出到 stdout 或文件（`logging.output`）
+- 当 `logging.output` 为 `file` 或 `both` 时，会使用 `logs/`（默认 `<workdir>/logs`）
 
 运行路径策略：
 
@@ -61,14 +64,24 @@
 go build -o codex-gateway ./cmd/codex-gateway
 ```
 
-2）准备配置：
+2）准备配置（在仓库根目录执行）：
 
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-然后编辑 `config.yaml`，至少填写固定下游 key 和上游 `base_url`。
+然后编辑 `config.yaml`，至少填写 `auth.downstream_api_key`。
+未设置时 `upstream.mode` 默认为 `codex_oauth`；仅在 `upstream.mode: openai_api` 时需要设置 `upstream.base_url`。
 对于 Codex OAuth 的 callback 模式，OAuth 端点和 `client_id` 已有默认值。
+如有需要，可为 `auth login` 与 `serve` 的外发请求配置统一代理：
+
+```yaml
+network:
+  proxy_url: "http://127.0.0.1:7890"
+```
+
+`network.proxy_url` 必须是包含 host 的绝对 URL，且协议仅支持 `http`、`https`、`socks5`、`socks5h`（例如 `http://127.0.0.1:7890` 或 `socks5h://127.0.0.1:1080`）。
+将 `network.proxy_url` 留空或不设置时，表示不显式配置代理。
 
 3）执行 OAuth 登录（交互式）：
 
@@ -84,6 +97,11 @@ cp config.example.yaml config.yaml
 ./codex-gateway serve --workdir . --config config.yaml
 ```
 
+启动后日志会包含：
+
+- `api_prefix`（例如 `http://127.0.0.1:8080/v1`）
+- 通过启动探测（`GET /v1/models`）发现的 `available_models`
+
 ## API 参考
 
 - 正式 API 文档： [docs/zh-CN/api-reference.md](docs/zh-CN/api-reference.md)
@@ -94,6 +112,63 @@ cp config.example.yaml config.yaml
 - `GET /healthz`
 - `GET /v1/models`
 - `POST /v1/chat/completions`
+- `POST /v1/responses`
+
+## OpenCode 自定义 Provider
+
+当 OpenCode 客户端连接本网关并希望获得类似 codex 的 responses/thinking 行为时，建议自定义 provider 使用 `@ai-sdk/openai`（而不是泛 OpenAI-compatible 适配器）。
+
+`opencode.json` 示例：
+
+```json
+{
+  "providers": {
+    "gateway": {
+      "package": "@ai-sdk/openai",
+      "name": "Gateway",
+      "options": {
+        "baseURL": "http://127.0.0.1:8080/v1",
+        "apiKey": "<downstream_api_key>"
+      }
+    }
+  },
+  "models": {
+    "gateway/gpt-5.3-codex": {
+      "reasoning": true,
+      "limit": {
+        "input": 200000,
+        "output": 32000
+      }
+    }
+  }
+}
+```
+
+如果你的 OpenCode 使用 provider-catalog 配置格式（`npm` + 嵌套 `models`），可在 `providers` 下使用以下配置块作为兼容兜底：
+
+```json
+"gateway": {
+  "name": "gateway",
+  "npm": "@ai-sdk/openai-compatible",
+  "models": {
+    "gpt-5.3-codex": {
+      "name": "gpt-5.3-codex",
+      "variants": {
+        "xhigh": { "reasoningEffort": "xhigh" },
+        "high": { "reasoningEffort": "high" },
+        "low": { "reasoningEffort": "low" }
+      }
+    }
+  },
+  "options": {
+    "baseURL": "http://localhost:8080/v1"
+  }
+}
+```
+
+说明：在 `codex_oauth` 模式下，chat 兼容路径现已映射 `tools`、`tool_choice`、`parallel_tool_calls`、`reasoning_effort` 以及工具消息 `tool_call_id`，并在非流式/流式响应中返回 chat `tool_calls`。`max_tokens`/`max_completion_tokens` 仅为兼容字段，会被接收但不会向上游透传。若需要 Codex 事件语义的完整原样能力，请使用 `POST /v1/responses`。
+
+说明：在 `codex_oauth` 模式下，`POST /v1/responses` 当 `instructions` 缺失或为空时，会自动补默认值（`"You are a helpful assistant."`）；`max_output_tokens`/`max_completion_tokens` 作为兼容字段会被接收，但转发前会移除。
 
 请求 payload 示例（`POST /v1/chat/completions`）：
 
@@ -128,7 +203,12 @@ cp config.example.yaml config.yaml
 
 - `401`：下游固定 API Key 缺失或错误
 - `503`：OAuth 令牌不可用或刷新失败
-- `502`：上游网络/服务错误
+- `502`：上游网络/服务错误（`upstream_unavailable` 或 `upstream_error`）
+
+说明：
+
+- 上述 envelope 仅适用于网关自身生成的错误。
+- 上游 4xx 响应会原样透传，可能不符合网关 envelope。
 
 ## 开发
 

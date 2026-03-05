@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,7 +13,6 @@ import (
 
 	"codex-gateway/internal/auth"
 	"codex-gateway/internal/config"
-	"codex-gateway/internal/logging"
 	"codex-gateway/internal/oauth"
 	"codex-gateway/internal/server"
 	"codex-gateway/internal/upstream"
@@ -48,15 +48,20 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	rootLogger, err := logging.New(cfg.Logging.Level, cfg.Logging.Format, os.Stdout)
+	rootLogger, err := newRootLogger(cfg.Logging, paths.Workdir)
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}
 	logger := rootLogger.With("component", "cli")
 	serverLogger := rootLogger.With("component", "server")
 	authLogger := rootLogger.With("component", "auth")
+	upstreamLogger := rootLogger.With("component", "upstream")
 
 	store := auth.NewFileStore(paths.TokenPath)
+	oauthHTTPClient, err := newOAuthHTTPClient(cfg.Network.ProxyURL)
+	if err != nil {
+		return fmt.Errorf("build oauth http client: %w", err)
+	}
 
 	oauthClient := oauth.NewClient(oauth.Config{
 		ClientID:                    cfg.OAuth.ClientID,
@@ -70,7 +75,7 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 		Originator:                  cfg.OAuth.Originator,
 		Scopes:                      cfg.OAuth.Scopes,
 		Audience:                    cfg.OAuth.Audience,
-	})
+	}, oauth.WithHTTPClient(oauthHTTPClient))
 
 	manager := auth.NewManager(store, func(ctx context.Context, in auth.Token) (auth.Token, error) {
 		refreshed, err := oauthClient.RefreshToken(ctx, in.RefreshToken)
@@ -90,22 +95,19 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 		upstreamBaseURL = cfg.Upstream.CodexBaseURL
 	}
 
+	upstreamHTTPClient, err := newUpstreamHTTPClient(cfg.Upstream.TimeoutSeconds, cfg.Network.ProxyURL)
+	if err != nil {
+		return fmt.Errorf("build upstream http client: %w", err)
+	}
+
 	upstreamClient := upstream.NewClient(
 		upstreamBaseURL,
 		time.Duration(cfg.Upstream.TimeoutSeconds)*time.Second,
+		upstream.WithHTTPClient(upstreamHTTPClient),
+		upstream.WithLogger(upstreamLogger),
 	)
 
-	handler := server.New(server.Dependencies{
-		FixedAPIKey:         cfg.Auth.DownstreamAPIKey,
-		ModelsPath:          cfg.Upstream.ModelsPath,
-		ChatCompletionsPath: cfg.Upstream.ChatCompletionsPath,
-		CodexCompat:         cfg.Upstream.Mode == "codex_oauth",
-		CodexResponsesPath:  cfg.Upstream.CodexResponsesPath,
-		CodexOriginator:     cfg.OAuth.Originator,
-		Logger:              serverLogger,
-		TokenProvider:       manager,
-		UpstreamClient:      upstreamClient,
-	})
+	handler := server.New(buildServerDependencies(cfg, manager, upstreamClient, serverLogger))
 
 	httpServer := &http.Server{
 		Addr:    cfg.Server.Listen,
@@ -116,9 +118,23 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 	defer stop()
 
 	errCh := make(chan error, 1)
-	logger.InfoContext(ctx, "gateway server starting", "listen", cfg.Server.Listen, "workdir", paths.Workdir, "upstream_mode", cfg.Upstream.Mode)
+	apiPrefix, probePrefix, prefixErr := buildServePrefixes(cfg.Server.Listen)
+	if prefixErr != nil {
+		logger.WarnContext(ctx, "failed to parse listen address for startup metadata", "listen", cfg.Server.Listen, "error", prefixErr)
+	}
+	logger.InfoContext(ctx, "gateway server starting", "listen", cfg.Server.Listen, "workdir", paths.Workdir, "upstream_mode", cfg.Upstream.Mode, "api_prefix", apiPrefix)
 	go func() {
 		errCh <- httpServer.ListenAndServe()
+	}()
+
+	go func() {
+		discover := func(discoverCtx context.Context, prefix, apiKey string) ([]string, error) {
+			probeCtx, cancel := context.WithTimeout(discoverCtx, defaultStartupProbeTTL)
+			defer cancel()
+			return discoverAvailableModels(probeCtx, &http.Client{Timeout: defaultStartupProbeTTL}, prefix, apiKey)
+		}
+
+		logServeStartupInfo(ctx, logger, probePrefix, cfg.Auth.DownstreamAPIKey, discover, 3, 200*time.Millisecond)
 	}()
 
 	select {
@@ -139,5 +155,20 @@ func runServe(ctx context.Context, workdir, configFile string) error {
 		}
 		logger.InfoContext(ctx, "gateway server shutdown completed")
 		return nil
+	}
+}
+
+func buildServerDependencies(cfg config.Config, tokenProvider server.TokenProvider, upstreamClient server.UpstreamClient, logger *slog.Logger) server.Dependencies {
+	return server.Dependencies{
+		FixedAPIKey:         cfg.Auth.DownstreamAPIKey,
+		ModelsPath:          cfg.Upstream.ModelsPath,
+		ChatCompletionsPath: cfg.Upstream.ChatCompletionsPath,
+		ResponsesPath:       cfg.Upstream.ResponsesPath,
+		CodexCompat:         cfg.Upstream.Mode == "codex_oauth",
+		CodexResponsesPath:  cfg.Upstream.CodexResponsesPath,
+		CodexOriginator:     cfg.OAuth.Originator,
+		Logger:              logger,
+		TokenProvider:       tokenProvider,
+		UpstreamClient:      upstreamClient,
 	}
 }

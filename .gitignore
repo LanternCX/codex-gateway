@@ -10,6 +10,7 @@
 /config.yaml
 /oauth-token.json
 /logs/
+/.worktrees/
 
 # Tooling
 /.opencode/node_modules/

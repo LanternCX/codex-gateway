@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -13,6 +14,7 @@ type Config struct {
 	Auth     AuthConfig     `yaml:"auth"`
 	Logging  LoggingConfig  `yaml:"logging"`
 	OAuth    OAuthConfig    `yaml:"oauth"`
+	Network  NetworkConfig  `yaml:"network"`
 	Upstream UpstreamConfig `yaml:"upstream"`
 }
 
@@ -25,8 +27,20 @@ type AuthConfig struct {
 }
 
 type LoggingConfig struct {
-	Level  string `yaml:"level"`
-	Format string `yaml:"format"`
+	Level  string            `yaml:"level"`
+	Format string            `yaml:"format"`
+	Output string            `yaml:"output"`
+	Color  string            `yaml:"color"`
+	File   LoggingFileConfig `yaml:"file"`
+}
+
+type LoggingFileConfig struct {
+	Dir        string `yaml:"dir"`
+	Name       string `yaml:"name"`
+	MaxSizeMB  int    `yaml:"max_size_mb"`
+	MaxBackups int    `yaml:"max_backups"`
+	MaxAgeDays int    `yaml:"max_age_days"`
+	Compress   bool   `yaml:"compress"`
 }
 
 type OAuthConfig struct {
@@ -43,10 +57,15 @@ type OAuthConfig struct {
 	Audience                    string   `yaml:"audience"`
 }
 
+type NetworkConfig struct {
+	ProxyURL string `yaml:"proxy_url"`
+}
+
 type UpstreamConfig struct {
 	BaseURL             string `yaml:"base_url"`
 	ModelsPath          string `yaml:"models_path"`
 	ChatCompletionsPath string `yaml:"chat_completions_path"`
+	ResponsesPath       string `yaml:"responses_path"`
 	Mode                string `yaml:"mode"`
 	CodexBaseURL        string `yaml:"codex_base_url"`
 	CodexResponsesPath  string `yaml:"codex_responses_path"`
@@ -81,6 +100,10 @@ func applyDefaults(cfg *Config) {
 		cfg.Upstream.ChatCompletionsPath = "/v1/chat/completions"
 	}
 
+	if cfg.Upstream.ResponsesPath == "" {
+		cfg.Upstream.ResponsesPath = "/v1/responses"
+	}
+
 	if cfg.Upstream.TimeoutSeconds == 0 {
 		cfg.Upstream.TimeoutSeconds = 60
 	}
@@ -107,6 +130,30 @@ func applyDefaults(cfg *Config) {
 
 	if cfg.Logging.Format == "" {
 		cfg.Logging.Format = "text"
+	}
+
+	if cfg.Logging.Output == "" {
+		cfg.Logging.Output = "stdout"
+	}
+
+	if cfg.Logging.Color == "" {
+		cfg.Logging.Color = "auto"
+	}
+
+	if cfg.Logging.File.Name == "" {
+		cfg.Logging.File.Name = "codex-gateway.log"
+	}
+
+	if cfg.Logging.File.MaxSizeMB == 0 {
+		cfg.Logging.File.MaxSizeMB = 100
+	}
+
+	if cfg.Logging.File.MaxBackups == 0 {
+		cfg.Logging.File.MaxBackups = 10
+	}
+
+	if cfg.Logging.File.MaxAgeDays == 0 {
+		cfg.Logging.File.MaxAgeDays = 7
 	}
 
 	if cfg.OAuth.ClientID == "" {
@@ -173,6 +220,52 @@ func (c Config) Validate() error {
 	case "text", "json":
 	default:
 		return fmt.Errorf("invalid logging.format %q (expected text or json)", c.Logging.Format)
+	}
+
+	output := strings.ToLower(strings.TrimSpace(c.Logging.Output))
+	switch output {
+	case "stdout", "file", "both":
+	default:
+		return fmt.Errorf("invalid logging.output %q (expected stdout, file, or both)", c.Logging.Output)
+	}
+
+	color := strings.ToLower(strings.TrimSpace(c.Logging.Color))
+	switch color {
+	case "auto", "always", "never":
+	default:
+		return fmt.Errorf("invalid logging.color %q (expected auto, always, or never)", c.Logging.Color)
+	}
+
+	if output != "stdout" {
+		if strings.TrimSpace(c.Logging.File.Name) == "" {
+			return fmt.Errorf("invalid logging.file.name %q (must not be empty)", c.Logging.File.Name)
+		}
+
+		if c.Logging.File.MaxSizeMB <= 0 {
+			return fmt.Errorf("invalid logging.file.max_size_mb %d (must be > 0)", c.Logging.File.MaxSizeMB)
+		}
+
+		if c.Logging.File.MaxBackups <= 0 {
+			return fmt.Errorf("invalid logging.file.max_backups %d (must be > 0)", c.Logging.File.MaxBackups)
+		}
+
+		if c.Logging.File.MaxAgeDays <= 0 {
+			return fmt.Errorf("invalid logging.file.max_age_days %d (must be > 0)", c.Logging.File.MaxAgeDays)
+		}
+	}
+
+	if proxyURL := strings.TrimSpace(c.Network.ProxyURL); proxyURL != "" {
+		u, err := url.Parse(proxyURL)
+		if err != nil || !u.IsAbs() || strings.TrimSpace(u.Hostname()) == "" {
+			return fmt.Errorf("invalid network.proxy_url %q (expected absolute URL with host)", c.Network.ProxyURL)
+		}
+
+		scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+		switch scheme {
+		case "http", "https", "socks5", "socks5h":
+		default:
+			return fmt.Errorf("invalid network.proxy_url %q (expected scheme http, https, socks5, or socks5h)", c.Network.ProxyURL)
+		}
 	}
 
 	return nil

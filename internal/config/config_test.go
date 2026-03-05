@@ -22,6 +22,7 @@ oauth:
     - "openid"
 upstream:
   base_url: "https://api.example.com"
+  responses_path: "/custom/responses"
 `
 
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -47,6 +48,10 @@ upstream:
 
 	if cfg.Upstream.ChatCompletionsPath != "/v1/chat/completions" {
 		t.Fatalf("expected default chat path, got %q", cfg.Upstream.ChatCompletionsPath)
+	}
+
+	if cfg.Upstream.ResponsesPath != "/custom/responses" {
+		t.Fatalf("expected custom responses path, got %q", cfg.Upstream.ResponsesPath)
 	}
 }
 
@@ -119,6 +124,10 @@ upstream:
 
 	if cfg.Upstream.CodexBaseURL != "https://chatgpt.com" {
 		t.Fatalf("expected default upstream.codex_base_url, got %q", cfg.Upstream.CodexBaseURL)
+	}
+
+	if cfg.Upstream.ResponsesPath != "/v1/responses" {
+		t.Fatalf("expected default upstream.responses_path, got %q", cfg.Upstream.ResponsesPath)
 	}
 }
 
@@ -244,5 +253,205 @@ upstream:
 
 	if !strings.Contains(err.Error(), "logging.format") {
 		t.Fatalf("expected logging.format validation error, got: %v", err)
+	}
+}
+
+func TestLoad_LoggingOutputDefaults(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	content := `auth:
+  downstream_api_key: "fixed-key"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected config to load, got: %v", err)
+	}
+
+	if cfg.Logging.Output != "stdout" {
+		t.Fatalf("expected default logging.output stdout, got %q", cfg.Logging.Output)
+	}
+
+	if cfg.Logging.Color != "auto" {
+		t.Fatalf("expected default logging.color auto, got %q", cfg.Logging.Color)
+	}
+
+	if cfg.Logging.File.Name != "codex-gateway.log" {
+		t.Fatalf("expected default logging.file.name codex-gateway.log, got %q", cfg.Logging.File.Name)
+	}
+
+	if cfg.Logging.File.MaxSizeMB != 100 {
+		t.Fatalf("expected default logging.file.max_size_mb 100, got %d", cfg.Logging.File.MaxSizeMB)
+	}
+
+	if cfg.Logging.File.MaxBackups != 10 {
+		t.Fatalf("expected default logging.file.max_backups 10, got %d", cfg.Logging.File.MaxBackups)
+	}
+
+	if cfg.Logging.File.MaxAgeDays != 7 {
+		t.Fatalf("expected default logging.file.max_age_days 7, got %d", cfg.Logging.File.MaxAgeDays)
+	}
+}
+
+func TestLoad_InvalidLoggingOutput(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	content := `auth:
+  downstream_api_key: "fixed-key"
+logging:
+  output: "console"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	if !strings.Contains(err.Error(), "logging.output") {
+		t.Fatalf("expected logging.output validation error, got: %v", err)
+	}
+}
+
+func TestLoad_InvalidLoggingColor(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	content := `auth:
+  downstream_api_key: "fixed-key"
+logging:
+  color: "on"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	if !strings.Contains(err.Error(), "logging.color") {
+		t.Fatalf("expected logging.color validation error, got: %v", err)
+	}
+}
+
+func TestLoad_InvalidLoggingFileMaxSize(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "config.yaml")
+	content := `auth:
+  downstream_api_key: "fixed-key"
+logging:
+  output: "file"
+  file:
+    max_size_mb: -1
+upstream:
+  base_url: "https://api.example.com"
+`
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	if !strings.Contains(err.Error(), "logging.file.max_size_mb") {
+		t.Fatalf("expected logging.file.max_size_mb validation error, got: %v", err)
+	}
+}
+
+func TestLoad_ValidNetworkProxyURL(t *testing.T) {
+	tests := []struct {
+		name       string
+		proxyURL   string
+		expectLoad string
+	}{
+		{name: "empty proxy_url is valid", proxyURL: "", expectLoad: ""},
+		{name: "http proxy_url is valid", proxyURL: "http://proxy.example.com:8080", expectLoad: "http://proxy.example.com:8080"},
+		{name: "https proxy_url is valid", proxyURL: "https://proxy.example.com:8443", expectLoad: "https://proxy.example.com:8443"},
+		{name: "socks5 proxy_url is valid", proxyURL: "socks5://proxy.example.com:1080", expectLoad: "socks5://proxy.example.com:1080"},
+		{name: "socks5h proxy_url is valid", proxyURL: "socks5h://proxy.example.com:1080", expectLoad: "socks5h://proxy.example.com:1080"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			path := filepath.Join(tmp, "config.yaml")
+			content := `auth:
+  downstream_api_key: "fixed-key"
+network:
+  proxy_url: "` + tc.proxyURL + `"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatalf("expected valid network.proxy_url, got error: %v", err)
+			}
+
+			if cfg.Network.ProxyURL != tc.expectLoad {
+				t.Fatalf("unexpected network.proxy_url: %q", cfg.Network.ProxyURL)
+			}
+		})
+	}
+}
+
+func TestLoad_InvalidNetworkProxyURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		proxyURL string
+	}{
+		{name: "unsupported scheme", proxyURL: "ftp://proxy.example.com:21"},
+		{name: "missing scheme", proxyURL: "proxy.example.com:8080"},
+		{name: "relative path", proxyURL: "/tmp/proxy.sock"},
+		{name: "missing hostname", proxyURL: "http://:8080"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			path := filepath.Join(tmp, "config.yaml")
+			content := `auth:
+  downstream_api_key: "fixed-key"
+network:
+  proxy_url: "` + tc.proxyURL + `"
+upstream:
+  base_url: "https://api.example.com"
+`
+
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+
+			_, err := Load(path)
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+
+			if !strings.Contains(err.Error(), "network.proxy_url") {
+				t.Fatalf("expected network.proxy_url validation error, got: %v", err)
+			}
+		})
 	}
 }

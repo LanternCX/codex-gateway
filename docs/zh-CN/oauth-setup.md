@@ -10,7 +10,7 @@
 
 ## 1）准备运行配置
 
-先复制示例配置并编辑：
+先复制示例配置并编辑（在仓库根目录执行）：
 
 ```bash
 cp config.example.yaml config.yaml
@@ -21,17 +21,26 @@ cp config.example.yaml config.yaml
 callback 模式下最小必填配置：
 
 - `auth.downstream_api_key`
-- `upstream.mode`（默认 `codex_oauth`）
+
+未设置时 `upstream.mode` 默认为 `codex_oauth`。
+仅在使用 `upstream.mode: openai_api` 时需要设置 `upstream.base_url`。
 
 可选 `logging` 配置：
 
 - `level`（`debug`、`info`、`warn`、`error`）
-- `format`（`text`、`json`）
+- `format`（`text`、`json`）—— 默认 `text`
+- `output`（`stdout`、`file`、`both`）
+- `color`（`auto`、`always`、`never`，仅在 `text` 格式生效）—— 默认 `auto`
+- `file.dir`（为空时默认 `<workdir>/logs`）
+- `file.name`
+- `file.max_size_mb`、`file.max_backups`、`file.max_age_days`
+- `file.compress`
 
 `oauth` 可选覆盖字段：
 
 - `client_id`
 - `authorize_endpoint`
+- `device_authorization_endpoint`
 - `token_endpoint`
 - `redirect_host`
 - `redirect_port`
@@ -39,6 +48,17 @@ callback 模式下最小必填配置：
 - `scopes`
 - `audience`
 - `client_secret`（部分 OAuth 提供方要求）
+
+可选外发代理配置：
+
+```yaml
+network:
+  proxy_url: "http://127.0.0.1:7890"
+```
+
+- `network.proxy_url` 留空或不设置时，表示不显式配置代理。
+- `network.proxy_url` 必须是包含 host 的绝对 URL，且协议仅支持 `http`、`https`、`socks5`、`socks5h`（例如 `http://127.0.0.1:7890` 或 `socks5h://127.0.0.1:1080`）。
+- 设置后会同时影响 `auth login` 的 OAuth 请求与 `serve` 的上游转发请求。
 
 说明：Codex OAuth 的 callback 默认值已内置，大多数场景无需修改 `oauth` 配置块。
 
@@ -65,6 +85,11 @@ callback 模式下最小必填配置：
 ```bash
 ./codex-gateway serve --workdir . --config config.yaml
 ```
+
+启动后日志会包含：
+
+- `api_prefix`（例如 `http://127.0.0.1:8080/v1`）
+- 通过启动探测（`GET /v1/models`）发现的 `available_models`
 
 ## 故障排查
 

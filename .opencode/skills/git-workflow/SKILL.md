@@ -16,6 +16,7 @@ Core principle: integrate through `dev`, release through `main`, and keep histor
 ## Commit Convention
 - Use Angular conventional commit style: `feat:`, `fix:`, `docs:`, `chore:`.
 - Keep commit scope small and reviewable.
+- Agent-created commits must include trailer: `Co-authored-by: opencode-agent[bot] <opencode-agent[bot]@users.noreply.github.com>`.
 
 ## Merge Policy
 - Run tests before merge.

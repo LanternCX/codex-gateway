@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	gatewaylog "codex-gateway/internal/logging"
 )
 
 func RequestLoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
@@ -18,6 +20,13 @@ func RequestLoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handl
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestID := gatewaylog.EnsureRequestID(r.Header.Get(gatewaylog.RequestIDHeader))
+			w.Header().Set(gatewaylog.RequestIDHeader, requestID)
+
+			ctx := gatewaylog.WithRequestID(r.Context(), requestID)
+			r = r.WithContext(ctx)
+			requestLogger := logger.With("request_id", requestID)
+
 			start := time.Now()
 			recorder := &statusRecorder{ResponseWriter: w}
 
@@ -28,14 +37,15 @@ func RequestLoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handl
 				status = http.StatusOK
 			}
 
-			logger.InfoContext(
-				r.Context(),
+			requestLogger.InfoContext(
+				ctx,
 				"request completed",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", status,
 				"duration_ms", time.Since(start).Milliseconds(),
 				"bytes", recorder.bytes,
+				"remote_addr", r.RemoteAddr,
 			)
 		})
 	}

@@ -44,3 +44,7 @@ abc123d (or TBD)
 | 2026-03-02-8 | 2026-03-02 | Add formal bilingual API documentation and OpenAPI spec | `.progress/entries/2026/2026-03-02-8.md` | docs, api, openapi, i18n |
 | 2026-03-02-9 | 2026-03-02 | Fix opencode compatibility by removing unsupported max_output_tokens forwarding | `.progress/entries/2026/2026-03-02-9.md` | opencode, compatibility, chat, payload |
 | 2026-03-02-10 | 2026-03-02 | Finalize callback-only mainline and split device flow into hold branch | `.progress/entries/2026/2026-03-02-10.md` | git-flow, callback, device-branch, docs |
+| 2026-03-02-11 | 2026-03-02 | Upgrade gateway logging to industrial-grade multi-sink structured telemetry | `.progress/entries/2026/2026-03-02-11.md` | logging, observability, request-id, redaction |
+| 2026-03-03-1 | 2026-03-03 | Log API prefix and discovered models on serve startup | `.progress/entries/2026/2026-03-03-1.md` | serve, startup, logging, models, ux |
+| 2026-03-04-1 | 2026-03-04 | Restore codex chat-compat tool-calling parity with responses translation | `.progress/entries/2026/2026-03-04-1.md` | codex, tool-calling, chat-compat, responses, docs |
+| 2026-03-05-1 | 2026-03-05 | Normalize codex responses requests for OpenCode compatibility | `.progress/entries/2026/2026-03-05-1.md` | codex, responses, opencode, compatibility, normalization |

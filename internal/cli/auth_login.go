@@ -7,7 +7,6 @@ import (
 
 	"codex-gateway/internal/auth"
 	"codex-gateway/internal/config"
-	"codex-gateway/internal/logging"
 	"codex-gateway/internal/oauth"
 	"github.com/spf13/cobra"
 )
@@ -51,13 +50,17 @@ func runAuthLogin(ctx context.Context, workdir, configFile string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	rootLogger, err := logging.New(cfg.Logging.Level, cfg.Logging.Format, os.Stdout)
+	rootLogger, err := newRootLogger(cfg.Logging, paths.Workdir)
 	if err != nil {
 		return fmt.Errorf("init logger: %w", err)
 	}
 	logger := rootLogger.With("component", "auth")
 
 	store := auth.NewFileStore(paths.TokenPath)
+	oauthHTTPClient, err := newOAuthHTTPClient(cfg.Network.ProxyURL)
+	if err != nil {
+		return fmt.Errorf("build oauth http client: %w", err)
+	}
 
 	oauthClient := oauth.NewClient(oauth.Config{
 		ClientID:                    cfg.OAuth.ClientID,
@@ -71,7 +74,7 @@ func runAuthLogin(ctx context.Context, workdir, configFile string) error {
 		Originator:                  cfg.OAuth.Originator,
 		Scopes:                      cfg.OAuth.Scopes,
 		Audience:                    cfg.OAuth.Audience,
-	})
+	}, oauth.WithHTTPClient(oauthHTTPClient))
 
 	var token auth.Token
 	logger.InfoContext(ctx, "starting oauth login", "mode", "callback")

@@ -119,6 +119,37 @@ func TestProxyTokenProviderFailure(t *testing.T) {
 	}
 }
 
+func TestProxyModels_ForwardsRequestIDToUpstream(t *testing.T) {
+	const requestID = "req-forward-001"
+
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Request-ID"); got != requestID {
+			t.Fatalf("expected X-Request-ID %q, got %q", requestID, got)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[]}`))
+	}))
+	defer up.Close()
+
+	h := New(Dependencies{
+		FixedAPIKey:    "fixed-key",
+		TokenProvider:  staticTokenProvider{token: "oauth-token"},
+		UpstreamClient: upstream.NewClient(up.URL, 0),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer fixed-key")
+	req.Header.Set("X-Request-ID", requestID)
+	res := httptest.NewRecorder()
+
+	h.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.Code)
+	}
+}
+
 type staticTokenProvider struct {
 	token string
 	err   error

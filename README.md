@@ -2,11 +2,9 @@
 
 Language: [English](README.md) | [简体中文](README.zh-CN.md)
 
-Quick Links: [Features](#features) · [Runtime Directory](#runtime-directory) · [Quick Start](#quick-start) · [API Reference](#api-reference) · [Errors](#errors) · [Development](#development) · [Docs Index](docs/en/README.md)
-
 A self-hosted gateway that:
 
-- accepts OpenAI-compatible downstream requests (`/v1/models`, `/v1/chat/completions`)
+- accepts OpenAI-compatible downstream requests (`/v1/models`, `/v1/chat/completions`, `/v1/responses`)
 - authenticates upstream requests with OAuth tokens obtained via interactive CLI login
 - protects downstream access using one fixed API key from config
 
@@ -17,11 +15,15 @@ A self-hosted gateway that:
 - Default upstream mode is `codex_oauth` (compatible with ChatGPT OAuth tokens)
 - OpenAI-compatible endpoints:
   - `GET /v1/models`
-  - `POST /v1/chat/completions` (stream pass-through supported)
-  - In `codex_oauth` mode, `/v1/models` returns a compatibility model list and `/v1/chat/completions` is translated to Codex responses backend.
+  - `POST /v1/chat/completions` (streaming supported)
+  - `POST /v1/responses` (JSON and stream pass-through supported)
+  - In `codex_oauth` mode, `/v1/models` returns a compatibility model list; `/v1/chat/completions` is transformed into Codex responses backend requests/results; `/v1/responses` proxies to Codex responses backend path (default `/backend-api/codex/responses`, configurable via `upstream.codex_responses_path`).
+  - In `openai_api` mode, `/v1/chat/completions` and `/v1/responses` proxy to upstream paths.
 - Fixed downstream API key validation via `Authorization: Bearer <fixed_key>`
 - Automatic OAuth refresh before upstream calls
-- Structured logging with configurable `logging.level` and `logging.format`
+- Structured logging with configurable level/format/output/color and file rotation settings
+- Default stdout logging is human-readable text with terminal color auto-detection
+- Request correlation via `X-Request-ID` (auto-generated when missing)
 - Health endpoint: `GET /healthz`
 
 ## Documentation
@@ -41,7 +43,8 @@ All runtime files are resolved from `--workdir` (default: current directory):
 
 - `config.yaml`
 - `oauth-token.json`
-- Structured logs emitted to stdout (`logging.level`, `logging.format`)
+- Structured logs emitted to stdout or file (`logging.output`)
+- `logs/` when `logging.output` is `file` or `both` (default path `<workdir>/logs`)
 
 Runtime path policy:
 
@@ -61,14 +64,24 @@ Upstream mode:
 go build -o codex-gateway ./cmd/codex-gateway
 ```
 
-2) Prepare config:
+2) Prepare config (from repository root):
 
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-Then edit `config.yaml` with at least your fixed downstream key and upstream base URL.
+Then edit `config.yaml` with at least `auth.downstream_api_key`.
+`upstream.mode` defaults to `codex_oauth` when omitted; set `upstream.base_url` only when `upstream.mode: openai_api`.
 For Codex OAuth callback mode, OAuth endpoints and client id already have defaults.
+If needed, you can set an outbound proxy for both `auth login` and `serve` requests:
+
+```yaml
+network:
+  proxy_url: "http://127.0.0.1:7890"
+```
+
+`network.proxy_url` must be an absolute URL with host and a supported scheme: `http`, `https`, `socks5`, or `socks5h` (for example, `http://127.0.0.1:7890` or `socks5h://127.0.0.1:1080`).
+Leave `network.proxy_url` empty or unset to use no explicit proxy.
 
 3) Run OAuth login (interactive):
 
@@ -84,6 +97,11 @@ This command starts a local callback listener and opens the browser authorizatio
 ./codex-gateway serve --workdir . --config config.yaml
 ```
 
+After startup, logs include:
+
+- `api_prefix` (for example `http://127.0.0.1:8080/v1`)
+- `available_models` discovered via a startup probe (`GET /v1/models`)
+
 ## API Reference
 
 - Formal API reference: [docs/en/api-reference.md](docs/en/api-reference.md)
@@ -94,6 +112,63 @@ Endpoint summary:
 - `GET /healthz`
 - `GET /v1/models`
 - `POST /v1/chat/completions`
+- `POST /v1/responses`
+
+## OpenCode custom provider
+
+For OpenCode clients targeting this gateway and expecting codex-like responses/thinking behavior, prefer `@ai-sdk/openai` as the custom provider package (instead of generic OpenAI-compatible adapters).
+
+`opencode.json` example:
+
+```json
+{
+  "providers": {
+    "gateway": {
+      "package": "@ai-sdk/openai",
+      "name": "Gateway",
+      "options": {
+        "baseURL": "http://127.0.0.1:8080/v1",
+        "apiKey": "<downstream_api_key>"
+      }
+    }
+  },
+  "models": {
+    "gateway/gpt-5.3-codex": {
+      "reasoning": true,
+      "limit": {
+        "input": 200000,
+        "output": 32000
+      }
+    }
+  }
+}
+```
+
+If your OpenCode setup uses the provider-catalog schema (`npm` + nested `models`), you can use this provider block under `providers` as a compatibility fallback:
+
+```json
+"gateway": {
+  "name": "gateway",
+  "npm": "@ai-sdk/openai-compatible",
+  "models": {
+    "gpt-5.3-codex": {
+      "name": "gpt-5.3-codex",
+      "variants": {
+        "xhigh": { "reasoningEffort": "xhigh" },
+        "high": { "reasoningEffort": "high" },
+        "low": { "reasoningEffort": "low" }
+      }
+    }
+  },
+  "options": {
+    "baseURL": "http://localhost:8080/v1"
+  }
+}
+```
+
+Note: in `codex_oauth` mode, chat-compat now maps `tools`, `tool_choice`, `parallel_tool_calls`, `reasoning_effort`, and tool message `tool_call_id`, and returns chat `tool_calls` in both non-stream and stream responses. `max_tokens`/`max_completion_tokens` are accepted for compatibility but ignored (not forwarded upstream). For full unmodified Codex event semantics, use `POST /v1/responses`.
+
+Note: in `codex_oauth` mode, `POST /v1/responses` now injects default `instructions` (`"You are a helpful assistant."`) when the field is missing or blank, and treats `max_output_tokens`/`max_completion_tokens` as compatibility-only (accepted then removed before upstream).
 
 Request payload example (`POST /v1/chat/completions`):
 
@@ -128,7 +203,12 @@ Common status mapping:
 
 - `401`: downstream fixed API key missing/invalid
 - `503`: OAuth token unavailable or refresh failed
-- `502`: upstream network/service error
+- `502`: upstream network/service error (`upstream_unavailable` or `upstream_error`)
+
+Notes:
+
+- The envelope above only applies to errors generated by the gateway.
+- Upstream 4xx responses are relayed as-is and may not match the gateway envelope.
 
 ## Development
 

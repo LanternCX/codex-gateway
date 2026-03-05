@@ -27,7 +27,7 @@ It does not upload local config files by itself.
 
 - Downstream fixed API key is validated locally.
 - OAuth access and refresh tokens are stored locally in `oauth-token.json`.
-- Logs should never include downstream API key, access tokens, or refresh tokens.
+- The logger redacts known secret fields (for example `authorization`, `api_key`, `access_token`, `refresh_token`, `client_secret`) to avoid leaking credentials.
 
 ## Operator Responsibilities
 
