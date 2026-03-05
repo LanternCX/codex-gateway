@@ -234,6 +234,8 @@ paths:
 
         - Requires `Authorization: Bearer <downstream_api_key>` (fixed API key from gateway config).
         - Gateway validates non-empty request body as JSON; invalid JSON returns `400 invalid_request`.
+        - In `codex_oauth` mode, missing/blank `instructions` is normalized to `"You are a helpful assistant."` before proxying.
+        - In `codex_oauth` mode, `max_output_tokens` and `max_completion_tokens` are accepted but removed before proxying.
         - Supports non-stream JSON and stream (`text/event-stream`) pass-through.
         - In `codex_oauth` mode, proxies to Codex backend responses path (`/backend-api/codex/responses` by default, configurable via `upstream.codex_responses_path`).
         - In `openai_api` mode, proxies upstream responses path (`/v1/responses` by default or configured path).
@@ -518,7 +520,7 @@ components:
     ResponsesRequest:
       type: object
       additionalProperties: true
-      description: Raw request body forwarded to the upstream responses endpoint.
+      description: Request body forwarded to upstream responses endpoint (with codex_oauth normalization for default instructions and compatibility token limits).
 
     ResponsesJSONResponse:
       type: object

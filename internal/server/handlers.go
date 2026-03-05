@@ -75,12 +75,18 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.deps.CodexCompat {
+		codexBody, err := normalizeCodexResponsesRequest(body)
+		if err != nil {
+			writeOpenAIError(w, http.StatusBadRequest, "invalid_request", "invalid request body json")
+			return
+		}
+
 		s.proxy(
 			w,
 			r,
 			http.MethodPost,
 			s.deps.CodexResponsesPath,
-			body,
+			codexBody,
 			r.Header.Get("Content-Type"),
 			map[string]string{"originator": s.deps.CodexOriginator},
 		)
@@ -88,6 +94,63 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.proxy(w, r, http.MethodPost, s.deps.ResponsesPath, body, r.Header.Get("Content-Type"), nil)
+}
+
+func normalizeCodexResponsesRequest(body []byte) ([]byte, error) {
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return body, nil
+	}
+
+	var payload any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("decode responses request: %w", err)
+	}
+
+	obj, ok := payload.(map[string]any)
+	if !ok {
+		return body, nil
+	}
+
+	mutated := false
+
+	if _, ok := obj["max_output_tokens"]; ok {
+		delete(obj, "max_output_tokens")
+		mutated = true
+	}
+
+	if _, ok := obj["max_completion_tokens"]; ok {
+		delete(obj, "max_completion_tokens")
+		mutated = true
+	}
+
+	if hasCodexInstructions(obj["instructions"]) && !mutated {
+		return body, nil
+	}
+
+	if !hasCodexInstructions(obj["instructions"]) {
+		obj["instructions"] = "You are a helpful assistant."
+		mutated = true
+	}
+
+	if !mutated {
+		return body, nil
+	}
+
+	normalizedBody, err := json.Marshal(obj)
+	if err != nil {
+		return nil, fmt.Errorf("encode responses request: %w", err)
+	}
+
+	return normalizedBody, nil
+}
+
+func hasCodexInstructions(value any) bool {
+	v, ok := value.(string)
+	if !ok {
+		return false
+	}
+
+	return strings.TrimSpace(v) != ""
 }
 
 func (s *Server) handleChatCompletionsCodex(w http.ResponseWriter, r *http.Request, rawBody []byte) {

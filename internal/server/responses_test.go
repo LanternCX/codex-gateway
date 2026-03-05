@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestResponses_CodexCompatProxiesToCodexResponsesPathWithOriginatorAndSSEPassThrough(t *testing.T) {
-	const reqBody = `{"model":"gpt-5.3-codex","input":[{"role":"user","content":"hello"}],"stream":true}`
+	const reqBody = `{"model":"gpt-5.3-codex","instructions":"You are a helpful assistant.","input":[{"role":"user","content":"hello"}],"stream":true}`
 	const reqContentType = "application/json; charset=utf-8"
 	const upstreamSSE = "data: {\"id\":\"resp_1\"}\n\ndata: [DONE]\n\n"
 
@@ -39,6 +40,118 @@ func TestResponses_CodexCompatProxiesToCodexResponsesPathWithOriginatorAndSSEPas
 
 		if string(body) != reqBody {
 			t.Fatalf("unexpected upstream body: %s", string(body))
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(upstreamSSE))
+	}))
+	defer up.Close()
+
+	h := New(Dependencies{
+		FixedAPIKey:        "fixed-key",
+		CodexCompat:        true,
+		ResponsesPath:      "/v1/responses",
+		CodexResponsesPath: "/backend-api/codex/responses",
+		CodexOriginator:    "opencode",
+		TokenProvider:      staticTokenProvider{token: "oauth-token"},
+		UpstreamClient:     upstream.NewClient(up.URL, 0),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer fixed-key")
+	req.Header.Set("Content-Type", reqContentType)
+	res := httptest.NewRecorder()
+
+	h.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	if ct := res.Header().Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("unexpected response content type: %q", ct)
+	}
+
+	if got := res.Body.String(); got != upstreamSSE {
+		t.Fatalf("unexpected response body: %q", got)
+	}
+}
+
+func TestResponses_CodexCompatAddsDefaultInstructionsWhenMissing(t *testing.T) {
+	const reqBody = `{"model":"gpt-5.3-codex","input":[{"role":"user","content":"hello"}],"stream":true}`
+	const reqContentType = "application/json"
+	const upstreamSSE = "data: {\"id\":\"resp_2\"}\n\ndata: [DONE]\n\n"
+
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("parse request body: %v", err)
+		}
+
+		if got := strings.TrimSpace(asString(payload["instructions"])); got != "You are a helpful assistant." {
+			t.Fatalf("expected default instructions, got %q", got)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(upstreamSSE))
+	}))
+	defer up.Close()
+
+	h := New(Dependencies{
+		FixedAPIKey:        "fixed-key",
+		CodexCompat:        true,
+		ResponsesPath:      "/v1/responses",
+		CodexResponsesPath: "/backend-api/codex/responses",
+		CodexOriginator:    "opencode",
+		TokenProvider:      staticTokenProvider{token: "oauth-token"},
+		UpstreamClient:     upstream.NewClient(up.URL, 0),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(reqBody))
+	req.Header.Set("Authorization", "Bearer fixed-key")
+	req.Header.Set("Content-Type", reqContentType)
+	res := httptest.NewRecorder()
+
+	h.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", res.Code, res.Body.String())
+	}
+
+	if ct := res.Header().Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("unexpected response content type: %q", ct)
+	}
+
+	if got := res.Body.String(); got != upstreamSSE {
+		t.Fatalf("unexpected response body: %q", got)
+	}
+}
+
+func TestResponses_CodexCompatOmitsMaxOutputTokensWhenForwarding(t *testing.T) {
+	const reqBody = `{"model":"gpt-5.3-codex","instructions":"You are a helpful assistant.","input":[{"role":"user","content":"hello"}],"max_output_tokens":1024,"stream":true}`
+	const reqContentType = "application/json"
+	const upstreamSSE = "data: {\"id\":\"resp_3\"}\n\ndata: [DONE]\n\n"
+
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("parse request body: %v", err)
+		}
+
+		if _, ok := payload["max_output_tokens"]; ok {
+			t.Fatalf("expected max_output_tokens to be omitted, got %v", payload["max_output_tokens"])
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")

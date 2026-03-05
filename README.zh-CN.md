@@ -168,6 +168,8 @@ network:
 
 说明：在 `codex_oauth` 模式下，chat 兼容路径现已映射 `tools`、`tool_choice`、`parallel_tool_calls`、`reasoning_effort` 以及工具消息 `tool_call_id`，并在非流式/流式响应中返回 chat `tool_calls`。`max_tokens`/`max_completion_tokens` 仅为兼容字段，会被接收但不会向上游透传。若需要 Codex 事件语义的完整原样能力，请使用 `POST /v1/responses`。
 
+说明：在 `codex_oauth` 模式下，`POST /v1/responses` 当 `instructions` 缺失或为空时，会自动补默认值（`"You are a helpful assistant."`）；`max_output_tokens`/`max_completion_tokens` 作为兼容字段会被接收，但转发前会移除。
+
 请求 payload 示例（`POST /v1/chat/completions`）：
 
 ```json

@@ -168,6 +168,8 @@ If your OpenCode setup uses the provider-catalog schema (`npm` + nested `models`
 
 Note: in `codex_oauth` mode, chat-compat now maps `tools`, `tool_choice`, `parallel_tool_calls`, `reasoning_effort`, and tool message `tool_call_id`, and returns chat `tool_calls` in both non-stream and stream responses. `max_tokens`/`max_completion_tokens` are accepted for compatibility but ignored (not forwarded upstream). For full unmodified Codex event semantics, use `POST /v1/responses`.
 
+Note: in `codex_oauth` mode, `POST /v1/responses` now injects default `instructions` (`"You are a helpful assistant."`) when the field is missing or blank, and treats `max_output_tokens`/`max_completion_tokens` as compatibility-only (accepted then removed before upstream).
+
 Request payload example (`POST /v1/chat/completions`):
 
 ```json

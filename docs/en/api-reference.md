@@ -207,7 +207,9 @@ Mode behavior:
 Request body:
 
 - Gateway validates non-empty request body as JSON first; invalid JSON returns `400 invalid_request`.
-- After validation, gateway forwards the request body to the upstream responses endpoint.
+- In `codex_oauth` mode, if `instructions` is missing or blank, gateway injects default instructions (`"You are a helpful assistant."`) before forwarding.
+- In `codex_oauth` mode, `max_output_tokens`/`max_completion_tokens` are accepted for compatibility but removed before upstream forwarding.
+- After validation/normalization, gateway forwards the request body to the upstream responses endpoint.
 
 Response (`200`):
 

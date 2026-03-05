@@ -47,3 +47,4 @@ abc123d (or TBD)
 | 2026-03-02-11 | 2026-03-02 | Upgrade gateway logging to industrial-grade multi-sink structured telemetry | `.progress/entries/2026/2026-03-02-11.md` | logging, observability, request-id, redaction |
 | 2026-03-03-1 | 2026-03-03 | Log API prefix and discovered models on serve startup | `.progress/entries/2026/2026-03-03-1.md` | serve, startup, logging, models, ux |
 | 2026-03-04-1 | 2026-03-04 | Restore codex chat-compat tool-calling parity with responses translation | `.progress/entries/2026/2026-03-04-1.md` | codex, tool-calling, chat-compat, responses, docs |
+| 2026-03-05-1 | 2026-03-05 | Normalize codex responses requests for OpenCode compatibility | `.progress/entries/2026/2026-03-05-1.md` | codex, responses, opencode, compatibility, normalization |

@@ -207,7 +207,9 @@ data: [DONE]
 请求体：
 
 - 网关会先校验非空请求体是否为 JSON；无效 JSON 返回 `400 invalid_request`。
-- 校验通过后，网关会将请求体转发到上游 responses 接口。
+- 在 `codex_oauth` 模式下，如果 `instructions` 缺失或为空，网关会先自动补默认值（`"You are a helpful assistant."`）。
+- 在 `codex_oauth` 模式下，`max_output_tokens`/`max_completion_tokens` 为兼容字段，会被接收但在转发前移除。
+- 完成校验/标准化后，网关会将请求体转发到上游 responses 接口。
 
 响应（`200`）：
 
