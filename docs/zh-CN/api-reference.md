@@ -116,8 +116,9 @@
 
 - `model` 必填，且至少需要一条非 `system` 消息。
 - 在 `codex_oauth` 模式下，请求会转换为 Codex backend responses 格式。
-- 在 `codex_oauth` 模式下，`max_tokens` 为兼容字段，会被接收但不会向上游透传。
-- `tools` 与 `tool_choice` 字段可以传入，但当前版本尚未映射为 Codex backend 工具执行。
+- 在 `codex_oauth` 模式下，`max_tokens`/`max_completion_tokens` 为兼容字段，会被接收但不会向上游透传。
+- 在 `codex_oauth` 模式下，`tools`、`tool_choice`、`parallel_tool_calls`、`reasoning_effort`、assistant `tool_calls` 历史以及工具消息（`tool_call_id`）会映射到 Codex backend 的工具语义。
+- 当上游产生函数调用时，网关会在非流式与流式响应中返回 chat `tool_calls`，并使用 `finish_reason: "tool_calls"`。
 
 ### 非流式示例
 

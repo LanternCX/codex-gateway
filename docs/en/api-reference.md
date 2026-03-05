@@ -116,8 +116,9 @@ Notes:
 
 - `model` and at least one non-system message are required.
 - In `codex_oauth` mode, request is translated to Codex backend format.
-- In `codex_oauth` mode, `max_tokens` is accepted for compatibility but ignored (not forwarded upstream).
-- `tools` and `tool_choice` are accepted in request shape but currently not translated to Codex backend tool execution.
+- In `codex_oauth` mode, `max_tokens`/`max_completion_tokens` are accepted for compatibility but ignored (not forwarded upstream).
+- In `codex_oauth` mode, `tools`, `tool_choice`, `parallel_tool_calls`, `reasoning_effort`, assistant `tool_calls` history, and tool messages (`tool_call_id`) are translated to Codex backend tool semantics.
+- When upstream emits function calls, gateway returns chat `tool_calls` with `finish_reason: "tool_calls"` in both non-stream and stream responses.
 
 ### Non-stream Example
 

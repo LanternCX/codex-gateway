@@ -144,6 +144,30 @@ network:
 }
 ```
 
+如果你的 OpenCode 使用 provider-catalog 配置格式（`npm` + 嵌套 `models`），可在 `providers` 下使用以下配置块作为兼容兜底：
+
+```json
+"gateway": {
+  "name": "gateway",
+  "npm": "@ai-sdk/openai-compatible",
+  "models": {
+    "gpt-5.3-codex": {
+      "name": "gpt-5.3-codex",
+      "variants": {
+        "xhigh": { "reasoningEffort": "xhigh" },
+        "high": { "reasoningEffort": "high" },
+        "low": { "reasoningEffort": "low" }
+      }
+    }
+  },
+  "options": {
+    "baseURL": "http://localhost:8080/v1"
+  }
+}
+```
+
+说明：在 `codex_oauth` 模式下，chat 兼容路径现已映射 `tools`、`tool_choice`、`parallel_tool_calls`、`reasoning_effort` 以及工具消息 `tool_call_id`，并在非流式/流式响应中返回 chat `tool_calls`。`max_tokens`/`max_completion_tokens` 仅为兼容字段，会被接收但不会向上游透传。若需要 Codex 事件语义的完整原样能力，请使用 `POST /v1/responses`。
+
 请求 payload 示例（`POST /v1/chat/completions`）：
 
 ```json

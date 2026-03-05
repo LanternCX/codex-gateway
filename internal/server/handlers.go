@@ -216,30 +216,57 @@ func cloneHeaders(in map[string]string) map[string]string {
 }
 
 type chatCompletionRequest struct {
-	Model       string           `json:"model"`
-	Messages    []chatMessage    `json:"messages"`
-	Stream      bool             `json:"stream"`
-	Temperature *float64         `json:"temperature,omitempty"`
-	TopP        *float64         `json:"top_p,omitempty"`
-	MaxTokens   *int             `json:"max_tokens,omitempty"`
-	ToolChoice  any              `json:"tool_choice,omitempty"`
-	Tools       []map[string]any `json:"tools,omitempty"`
+	Model               string           `json:"model"`
+	Messages            []chatMessage    `json:"messages"`
+	Stream              bool             `json:"stream"`
+	Temperature         *float64         `json:"temperature,omitempty"`
+	TopP                *float64         `json:"top_p,omitempty"`
+	MaxTokens           *int             `json:"max_tokens,omitempty"`
+	MaxCompletionTokens *int             `json:"max_completion_tokens,omitempty"`
+	ToolChoice          any              `json:"tool_choice,omitempty"`
+	Tools               []map[string]any `json:"tools,omitempty"`
+	ParallelToolCalls   *bool            `json:"parallel_tool_calls,omitempty"`
+	ReasoningEffort     string           `json:"reasoning_effort,omitempty"`
+	Functions           []map[string]any `json:"functions,omitempty"`
+	FunctionCall        any              `json:"function_call,omitempty"`
 }
 
 type chatMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content,omitempty"`
-	Name    string `json:"name,omitempty"`
+	Role         string            `json:"role"`
+	Content      any               `json:"content,omitempty"`
+	Name         string            `json:"name,omitempty"`
+	ToolCallID   string            `json:"tool_call_id,omitempty"`
+	ToolCalls    []chatToolCall    `json:"tool_calls,omitempty"`
+	FunctionCall *chatFunctionCall `json:"function_call,omitempty"`
+}
+
+type chatToolCall struct {
+	ID       string           `json:"id,omitempty"`
+	Type     string           `json:"type,omitempty"`
+	Function chatFunctionCall `json:"function"`
+}
+
+type chatFunctionCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments,omitempty"`
 }
 
 type codexResponsesRequest struct {
-	Model        string           `json:"model"`
-	Instructions string           `json:"instructions"`
-	Input        []map[string]any `json:"input"`
-	Store        bool             `json:"store"`
-	Stream       bool             `json:"stream"`
-	Temperature  *float64         `json:"temperature,omitempty"`
-	TopP         *float64         `json:"top_p,omitempty"`
+	Model             string           `json:"model"`
+	Instructions      string           `json:"instructions"`
+	Input             []map[string]any `json:"input"`
+	Store             bool             `json:"store"`
+	Stream            bool             `json:"stream"`
+	Temperature       *float64         `json:"temperature,omitempty"`
+	TopP              *float64         `json:"top_p,omitempty"`
+	Tools             []map[string]any `json:"tools,omitempty"`
+	ToolChoice        any              `json:"tool_choice,omitempty"`
+	ParallelToolCalls *bool            `json:"parallel_tool_calls,omitempty"`
+	Reasoning         *codexReasoning  `json:"reasoning,omitempty"`
+}
+
+type codexReasoning struct {
+	Effort string `json:"effort,omitempty"`
 }
 
 func toCodexResponsesRequest(in chatCompletionRequest) (codexResponsesRequest, error) {
@@ -250,25 +277,55 @@ func toCodexResponsesRequest(in chatCompletionRequest) (codexResponsesRequest, e
 
 	instructions := []string{}
 	input := []map[string]any{}
-	for _, msg := range in.Messages {
+	legacyCallCount := 0
+	for i, msg := range in.Messages {
 		role := strings.TrimSpace(msg.Role)
 		if role == "" {
 			continue
 		}
-		if role == "system" {
+
+		switch role {
+		case "system":
 			if text := stringifyContent(msg.Content); text != "" {
 				instructions = append(instructions, text)
 			}
-			continue
+		case "tool":
+			toolCallID := strings.TrimSpace(msg.ToolCallID)
+			if toolCallID == "" {
+				return codexResponsesRequest{}, fmt.Errorf("tool message requires tool_call_id")
+			}
+			input = append(input, map[string]any{
+				"type":    "function_call_output",
+				"call_id": toolCallID,
+				"output":  toCodexFunctionCallOutput(msg.Content),
+			})
+		case "assistant":
+			assistantCallItems, err := toCodexAssistantToolCallItems(msg, i, &legacyCallCount)
+			if err != nil {
+				return codexResponsesRequest{}, err
+			}
+			input = append(input, assistantCallItems...)
+
+			if msg.Content != nil || strings.TrimSpace(msg.Name) != "" {
+				item := map[string]any{"role": "assistant"}
+				if msg.Content != nil {
+					item["content"] = msg.Content
+				}
+				if msg.Name != "" {
+					item["name"] = msg.Name
+				}
+				input = append(input, item)
+			}
+		default:
+			item := map[string]any{"role": role}
+			if msg.Content != nil {
+				item["content"] = msg.Content
+			}
+			if msg.Name != "" {
+				item["name"] = msg.Name
+			}
+			input = append(input, item)
 		}
-		item := map[string]any{"role": role}
-		if msg.Content != nil {
-			item["content"] = msg.Content
-		}
-		if msg.Name != "" {
-			item["name"] = msg.Name
-		}
-		input = append(input, item)
 	}
 
 	if len(input) == 0 {
@@ -280,17 +337,240 @@ func toCodexResponsesRequest(in chatCompletionRequest) (codexResponsesRequest, e
 		instructionText = "You are a helpful assistant."
 	}
 
+	tools, err := toCodexTools(in.Tools, in.Functions)
+	if err != nil {
+		return codexResponsesRequest{}, err
+	}
+
+	toolChoice, err := toCodexToolChoice(in.ToolChoice, in.FunctionCall)
+	if err != nil {
+		return codexResponsesRequest{}, err
+	}
+
 	out := codexResponsesRequest{
-		Model:        model,
-		Instructions: instructionText,
-		Input:        input,
-		Store:        false,
-		Stream:       true,
-		Temperature:  in.Temperature,
-		TopP:         in.TopP,
+		Model:             model,
+		Instructions:      instructionText,
+		Input:             input,
+		Store:             false,
+		Stream:            true,
+		Temperature:       in.Temperature,
+		TopP:              in.TopP,
+		Tools:             tools,
+		ToolChoice:        toolChoice,
+		ParallelToolCalls: in.ParallelToolCalls,
+		Reasoning:         toCodexReasoning(in.ReasoningEffort),
 	}
 
 	return out, nil
+}
+
+func toCodexAssistantToolCallItems(msg chatMessage, messageIndex int, legacyCallCount *int) ([]map[string]any, error) {
+	items := []map[string]any{}
+
+	for i, call := range msg.ToolCalls {
+		callType := strings.TrimSpace(call.Type)
+		if callType == "" {
+			callType = "function"
+		}
+		if callType != "function" {
+			continue
+		}
+
+		name := strings.TrimSpace(call.Function.Name)
+		if name == "" {
+			return nil, fmt.Errorf("assistant tool_calls[%d].function.name is required", i)
+		}
+
+		callID := strings.TrimSpace(call.ID)
+		if callID == "" {
+			callID = fmt.Sprintf("call_m%d_t%d", messageIndex, i)
+		}
+
+		arguments := call.Function.Arguments
+		if strings.TrimSpace(arguments) == "" {
+			arguments = "{}"
+		}
+
+		items = append(items, map[string]any{
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      name,
+			"arguments": arguments,
+		})
+	}
+
+	if msg.FunctionCall == nil {
+		return items, nil
+	}
+
+	name := strings.TrimSpace(msg.FunctionCall.Name)
+	if name == "" {
+		return nil, fmt.Errorf("assistant function_call.name is required")
+	}
+
+	arguments := msg.FunctionCall.Arguments
+	if strings.TrimSpace(arguments) == "" {
+		arguments = "{}"
+	}
+
+	*legacyCallCount = *legacyCallCount + 1
+	items = append(items, map[string]any{
+		"type":      "function_call",
+		"call_id":   fmt.Sprintf("call_legacy_%d", *legacyCallCount),
+		"name":      name,
+		"arguments": arguments,
+	})
+
+	return items, nil
+}
+
+func toCodexFunctionCallOutput(content any) any {
+	switch v := content.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case []any:
+		return v
+	default:
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprint(v)
+		}
+		return string(encoded)
+	}
+}
+
+func toCodexTools(chatTools []map[string]any, legacyFunctions []map[string]any) ([]map[string]any, error) {
+	if len(chatTools) == 0 && len(legacyFunctions) > 0 {
+		chatTools = make([]map[string]any, 0, len(legacyFunctions))
+		for i, function := range legacyFunctions {
+			name := strings.TrimSpace(asString(function["name"]))
+			if name == "" {
+				return nil, fmt.Errorf("functions[%d].name is required", i)
+			}
+
+			toolFunction := map[string]any{
+				"name": name,
+			}
+			if desc, ok := function["description"]; ok {
+				toolFunction["description"] = desc
+			}
+			if params, ok := function["parameters"]; ok {
+				toolFunction["parameters"] = params
+			}
+
+			chatTools = append(chatTools, map[string]any{
+				"type":     "function",
+				"function": toolFunction,
+			})
+		}
+	}
+
+	if len(chatTools) == 0 {
+		return nil, nil
+	}
+
+	tools := make([]map[string]any, 0, len(chatTools))
+	for i, tool := range chatTools {
+		toolType := strings.TrimSpace(asString(tool["type"]))
+		if toolType == "" {
+			return nil, fmt.Errorf("tools[%d].type is required", i)
+		}
+
+		if toolType != "function" {
+			tools = append(tools, tool)
+			continue
+		}
+
+		rawFunction, ok := tool["function"].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("tools[%d].function is required for function tools", i)
+		}
+
+		name := strings.TrimSpace(asString(rawFunction["name"]))
+		if name == "" {
+			return nil, fmt.Errorf("tools[%d].function.name is required", i)
+		}
+
+		mappedTool := map[string]any{
+			"type": "function",
+			"name": name,
+		}
+		if description, ok := rawFunction["description"]; ok {
+			mappedTool["description"] = description
+		}
+		if parameters, ok := rawFunction["parameters"]; ok {
+			mappedTool["parameters"] = parameters
+		} else {
+			mappedTool["parameters"] = nil
+		}
+		if strict, ok := rawFunction["strict"]; ok {
+			mappedTool["strict"] = strict
+		} else {
+			mappedTool["strict"] = false
+		}
+
+		tools = append(tools, mappedTool)
+	}
+
+	return tools, nil
+}
+
+func toCodexToolChoice(toolChoice any, legacyFunctionCall any) (any, error) {
+	choice := toolChoice
+	if choice == nil {
+		choice = legacyFunctionCall
+	}
+	if choice == nil {
+		return nil, nil
+	}
+
+	switch v := choice.(type) {
+	case string:
+		value := strings.TrimSpace(v)
+		if value == "" {
+			return nil, nil
+		}
+		return value, nil
+	case map[string]any:
+		if function, ok := v["function"].(map[string]any); ok {
+			name := strings.TrimSpace(asString(function["name"]))
+			if name == "" {
+				return nil, fmt.Errorf("tool_choice.function.name is required")
+			}
+			return map[string]any{"type": "function", "name": name}, nil
+		}
+
+		if strings.TrimSpace(asString(v["type"])) == "function" {
+			name := strings.TrimSpace(asString(v["name"]))
+			if name == "" {
+				return nil, fmt.Errorf("tool_choice.name is required for type=function")
+			}
+			return map[string]any{"type": "function", "name": name}, nil
+		}
+
+		if name := strings.TrimSpace(asString(v["name"])); name != "" {
+			return map[string]any{"type": "function", "name": name}, nil
+		}
+
+		return v, nil
+	default:
+		return choice, nil
+	}
+}
+
+func toCodexReasoning(effort string) *codexReasoning {
+	value := strings.TrimSpace(effort)
+	if value == "" {
+		return nil
+	}
+	return &codexReasoning{Effort: value}
+}
+
+func asString(value any) string {
+	s, _ := value.(string)
+	return s
 }
 
 func stringifyContent(content any) string {
@@ -411,42 +691,220 @@ func parseSSE(reader io.Reader, onEvent func(sseEvent) error) error {
 	return emit()
 }
 
-func (s *Server) writeCodexAsChatCompletionJSON(w http.ResponseWriter, body io.Reader, requestedModel string) {
-	type responseCreated struct {
-		Response struct {
-			ID        string `json:"id"`
-			CreatedAt int64  `json:"created_at"`
-			Model     string `json:"model"`
-		} `json:"response"`
-	}
-	type responseDelta struct {
-		Delta string `json:"delta"`
-	}
-	type responseCompleted struct {
-		Response struct {
-			ID        string `json:"id"`
-			CreatedAt int64  `json:"created_at"`
-			Model     string `json:"model"`
-			Usage     struct {
-				InputTokens  int `json:"input_tokens"`
-				OutputTokens int `json:"output_tokens"`
-				TotalTokens  int `json:"total_tokens"`
-			} `json:"usage"`
-		} `json:"response"`
+type codexResponseCreatedEvent struct {
+	Response struct {
+		ID        string `json:"id"`
+		CreatedAt int64  `json:"created_at"`
+		Model     string `json:"model"`
+	} `json:"response"`
+}
+
+type codexResponseOutputTextDeltaEvent struct {
+	Delta string `json:"delta"`
+}
+
+type codexResponseOutputItem struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	CallID    string `json:"call_id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type codexResponseOutputItemEvent struct {
+	OutputIndex int                     `json:"output_index"`
+	Item        codexResponseOutputItem `json:"item"`
+}
+
+type codexResponseFunctionCallArgumentsDeltaEvent struct {
+	ItemID      string `json:"item_id"`
+	OutputIndex int    `json:"output_index"`
+	Delta       string `json:"delta"`
+}
+
+type codexResponseFunctionCallArgumentsDoneEvent struct {
+	ItemID      string `json:"item_id"`
+	OutputIndex int    `json:"output_index"`
+	Name        string `json:"name"`
+	Arguments   string `json:"arguments"`
+}
+
+type codexResponseCompletedEvent struct {
+	Response struct {
+		ID        string `json:"id"`
+		CreatedAt int64  `json:"created_at"`
+		Model     string `json:"model"`
+		Usage     struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+			TotalTokens  int `json:"total_tokens"`
+		} `json:"usage"`
+	} `json:"response"`
+}
+
+type codexToolCallState struct {
+	OutputIndex      int
+	ToolIndex        int
+	ItemID           string
+	CallID           string
+	Name             string
+	Arguments        string
+	MetadataSent     bool
+	BufferedArgs     strings.Builder
+	ArgumentsEmitted bool
+}
+
+func getOrCreateCodexToolCallState(byOutputIndex map[int]*codexToolCallState, byItemID map[string]*codexToolCallState, ordered *[]*codexToolCallState, outputIndex int, itemID string) *codexToolCallState {
+	trimmedItemID := strings.TrimSpace(itemID)
+	if trimmedItemID != "" {
+		if state, ok := byItemID[trimmedItemID]; ok {
+			if _, exists := byOutputIndex[outputIndex]; !exists {
+				byOutputIndex[outputIndex] = state
+			}
+			return state
+		}
 	}
 
-	created := responseCreated{}
-	completed := responseCompleted{}
+	if state, ok := byOutputIndex[outputIndex]; ok {
+		if trimmedItemID != "" {
+			state.ItemID = trimmedItemID
+			byItemID[trimmedItemID] = state
+		}
+		return state
+	}
+
+	state := &codexToolCallState{
+		OutputIndex: outputIndex,
+		ToolIndex:   len(*ordered),
+		ItemID:      trimmedItemID,
+	}
+	byOutputIndex[outputIndex] = state
+	if trimmedItemID != "" {
+		byItemID[trimmedItemID] = state
+	}
+	*ordered = append(*ordered, state)
+	return state
+}
+
+func applyCodexOutputItemToToolCallState(state *codexToolCallState, item codexResponseOutputItem) {
+	if id := strings.TrimSpace(item.ID); id != "" {
+		state.ItemID = id
+	}
+	if callID := strings.TrimSpace(item.CallID); callID != "" {
+		state.CallID = callID
+	}
+	if name := strings.TrimSpace(item.Name); name != "" {
+		state.Name = name
+	}
+	if strings.TrimSpace(state.Arguments) == "" && item.Arguments != "" {
+		state.Arguments = item.Arguments
+	}
+}
+
+func buildChatToolCalls(states []*codexToolCallState) []map[string]any {
+	if len(states) == 0 {
+		return nil
+	}
+
+	out := make([]map[string]any, 0, len(states))
+	for i, state := range states {
+		toolID := strings.TrimSpace(state.CallID)
+		if toolID == "" {
+			toolID = strings.TrimSpace(state.ItemID)
+		}
+		if toolID == "" {
+			toolID = fmt.Sprintf("call_%d", i+1)
+		}
+
+		name := strings.TrimSpace(state.Name)
+		if name == "" {
+			name = "unknown_function"
+		}
+
+		arguments := state.Arguments
+		if strings.TrimSpace(arguments) == "" {
+			arguments = "{}"
+		}
+
+		out = append(out, map[string]any{
+			"id":   toolID,
+			"type": "function",
+			"function": map[string]any{
+				"name":      name,
+				"arguments": arguments,
+			},
+		})
+	}
+
+	return out
+}
+
+func (s *Server) writeCodexAsChatCompletionJSON(w http.ResponseWriter, body io.Reader, requestedModel string) {
+	created := codexResponseCreatedEvent{}
+	completed := codexResponseCompletedEvent{}
 	var textBuilder strings.Builder
+	toolCallsByOutputIndex := map[int]*codexToolCallState{}
+	toolCallsByItemID := map[string]*codexToolCallState{}
+	orderedToolCalls := []*codexToolCallState{}
 
 	err := parseSSE(body, func(ev sseEvent) error {
 		switch ev.Event {
 		case "response.created":
 			_ = json.Unmarshal([]byte(ev.Data), &created)
 		case "response.output_text.delta":
-			var delta responseDelta
+			var delta codexResponseOutputTextDeltaEvent
 			if err := json.Unmarshal([]byte(ev.Data), &delta); err == nil {
 				textBuilder.WriteString(delta.Delta)
+			}
+		case "response.output_item.added", "response.output_item.done":
+			var itemEvent codexResponseOutputItemEvent
+			if err := json.Unmarshal([]byte(ev.Data), &itemEvent); err != nil {
+				return nil
+			}
+			if itemEvent.Item.Type != "function_call" {
+				return nil
+			}
+
+			state := getOrCreateCodexToolCallState(
+				toolCallsByOutputIndex,
+				toolCallsByItemID,
+				&orderedToolCalls,
+				itemEvent.OutputIndex,
+				itemEvent.Item.ID,
+			)
+			applyCodexOutputItemToToolCallState(state, itemEvent.Item)
+		case "response.function_call_arguments.delta":
+			var argsDelta codexResponseFunctionCallArgumentsDeltaEvent
+			if err := json.Unmarshal([]byte(ev.Data), &argsDelta); err != nil {
+				return nil
+			}
+
+			state := getOrCreateCodexToolCallState(
+				toolCallsByOutputIndex,
+				toolCallsByItemID,
+				&orderedToolCalls,
+				argsDelta.OutputIndex,
+				argsDelta.ItemID,
+			)
+			state.Arguments += argsDelta.Delta
+		case "response.function_call_arguments.done":
+			var argsDone codexResponseFunctionCallArgumentsDoneEvent
+			if err := json.Unmarshal([]byte(ev.Data), &argsDone); err != nil {
+				return nil
+			}
+
+			state := getOrCreateCodexToolCallState(
+				toolCallsByOutputIndex,
+				toolCallsByItemID,
+				&orderedToolCalls,
+				argsDone.OutputIndex,
+				argsDone.ItemID,
+			)
+			if name := strings.TrimSpace(argsDone.Name); name != "" {
+				state.Name = name
+			}
+			if argsDone.Arguments != "" {
+				state.Arguments = argsDone.Arguments
 			}
 		case "response.completed":
 			_ = json.Unmarshal([]byte(ev.Data), &completed)
@@ -482,6 +940,23 @@ func (s *Server) writeCodexAsChatCompletionJSON(w http.ResponseWriter, body io.R
 		createdAt = time.Now().Unix()
 	}
 
+	chatToolCalls := buildChatToolCalls(orderedToolCalls)
+
+	messageContent := any(textBuilder.String())
+	if textBuilder.Len() == 0 && len(chatToolCalls) > 0 {
+		messageContent = nil
+	}
+
+	message := map[string]any{
+		"role":    "assistant",
+		"content": messageContent,
+	}
+	finishReason := "stop"
+	if len(chatToolCalls) > 0 {
+		message["tool_calls"] = chatToolCalls
+		finishReason = "tool_calls"
+	}
+
 	response := map[string]any{
 		"id":      id,
 		"object":  "chat.completion",
@@ -489,12 +964,9 @@ func (s *Server) writeCodexAsChatCompletionJSON(w http.ResponseWriter, body io.R
 		"model":   model,
 		"choices": []map[string]any{
 			{
-				"index": 0,
-				"message": map[string]any{
-					"role":    "assistant",
-					"content": textBuilder.String(),
-				},
-				"finish_reason": "stop",
+				"index":         0,
+				"message":       message,
+				"finish_reason": finishReason,
 			},
 		},
 	}
@@ -519,31 +991,104 @@ func (s *Server) streamCodexAsChatCompletions(w http.ResponseWriter, body io.Rea
 		return
 	}
 
-	type responseCreated struct {
-		Response struct {
-			ID        string `json:"id"`
-			CreatedAt int64  `json:"created_at"`
-			Model     string `json:"model"`
-		} `json:"response"`
-	}
-	type responseDelta struct {
-		Delta string `json:"delta"`
-	}
-
 	id := ""
 	createdAt := int64(0)
 	model := requestedModel
 	roleSent := false
+	toolCallsSeen := false
+
+	toolCallsByOutputIndex := map[int]*codexToolCallState{}
+	toolCallsByItemID := map[string]*codexToolCallState{}
+	orderedToolCalls := []*codexToolCallState{}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 
+	emitChunk := func(delta map[string]any, finishReason any) {
+		if id == "" {
+			id = fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+		}
+		if createdAt == 0 {
+			createdAt = time.Now().Unix()
+		}
+		if strings.TrimSpace(model) == "" {
+			model = requestedModel
+		}
+
+		if delta != nil && !roleSent {
+			if _, ok := delta["role"]; !ok {
+				delta["role"] = "assistant"
+			}
+			roleSent = true
+		}
+
+		chunk := map[string]any{
+			"id":      id,
+			"object":  "chat.completion.chunk",
+			"created": createdAt,
+			"model":   model,
+			"choices": []map[string]any{{
+				"index":         0,
+				"delta":         delta,
+				"finish_reason": finishReason,
+			}},
+		}
+		b, _ := json.Marshal(chunk)
+		_, _ = w.Write([]byte("data: " + string(b) + "\n\n"))
+		flusher.Flush()
+	}
+
+	emitToolCallArguments := func(state *codexToolCallState, argumentDelta string) {
+		if argumentDelta == "" {
+			return
+		}
+
+		emitChunk(map[string]any{
+			"tool_calls": []map[string]any{{
+				"index": state.ToolIndex,
+				"function": map[string]any{
+					"arguments": argumentDelta,
+				},
+			}},
+		}, nil)
+		state.ArgumentsEmitted = true
+	}
+
+	emitToolCallMetadata := func(state *codexToolCallState, force bool) {
+		if state.MetadataSent {
+			return
+		}
+		if !force && strings.TrimSpace(state.CallID) == "" && strings.TrimSpace(state.Name) == "" {
+			return
+		}
+
+		toolCallDelta := map[string]any{
+			"index":    state.ToolIndex,
+			"type":     "function",
+			"function": map[string]any{},
+		}
+		if callID := strings.TrimSpace(state.CallID); callID != "" {
+			toolCallDelta["id"] = callID
+		}
+		if name := strings.TrimSpace(state.Name); name != "" {
+			toolCallDelta["function"] = map[string]any{"name": name}
+		}
+
+		emitChunk(map[string]any{"tool_calls": []map[string]any{toolCallDelta}}, nil)
+		state.MetadataSent = true
+
+		if state.BufferedArgs.Len() > 0 {
+			emitToolCallArguments(state, state.BufferedArgs.String())
+			state.BufferedArgs.Reset()
+		}
+	}
+
 	err := parseSSE(body, func(ev sseEvent) error {
 		switch ev.Event {
 		case "response.created":
-			var created responseCreated
+			var created codexResponseCreatedEvent
 			if err := json.Unmarshal([]byte(ev.Data), &created); err == nil {
 				if created.Response.ID != "" {
 					id = created.Response.ID
@@ -556,58 +1101,105 @@ func (s *Server) streamCodexAsChatCompletions(w http.ResponseWriter, body io.Rea
 				}
 			}
 		case "response.output_text.delta":
-			var delta responseDelta
+			var delta codexResponseOutputTextDeltaEvent
 			if err := json.Unmarshal([]byte(ev.Data), &delta); err != nil {
 				return nil
 			}
 			if delta.Delta == "" {
 				return nil
 			}
-			if id == "" {
-				id = fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+			emitChunk(map[string]any{"content": delta.Delta}, nil)
+		case "response.output_item.added", "response.output_item.done":
+			var itemEvent codexResponseOutputItemEvent
+			if err := json.Unmarshal([]byte(ev.Data), &itemEvent); err != nil {
+				return nil
 			}
-			if createdAt == 0 {
-				createdAt = time.Now().Unix()
+			if itemEvent.Item.Type != "function_call" {
+				return nil
 			}
-			deltaObj := map[string]any{"content": delta.Delta}
-			if !roleSent {
-				deltaObj["role"] = "assistant"
-				roleSent = true
+
+			toolCallsSeen = true
+			state := getOrCreateCodexToolCallState(
+				toolCallsByOutputIndex,
+				toolCallsByItemID,
+				&orderedToolCalls,
+				itemEvent.OutputIndex,
+				itemEvent.Item.ID,
+			)
+			applyCodexOutputItemToToolCallState(state, itemEvent.Item)
+			emitToolCallMetadata(state, true)
+
+			if strings.TrimSpace(itemEvent.Item.Arguments) != "" && !state.ArgumentsEmitted && state.BufferedArgs.Len() == 0 {
+				emitToolCallArguments(state, itemEvent.Item.Arguments)
+				state.Arguments = itemEvent.Item.Arguments
 			}
-			chunk := map[string]any{
-				"id":      id,
-				"object":  "chat.completion.chunk",
-				"created": createdAt,
-				"model":   model,
-				"choices": []map[string]any{{
-					"index":         0,
-					"delta":         deltaObj,
-					"finish_reason": nil,
-				}},
+		case "response.function_call_arguments.delta":
+			var argsDelta codexResponseFunctionCallArgumentsDeltaEvent
+			if err := json.Unmarshal([]byte(ev.Data), &argsDelta); err != nil {
+				return nil
 			}
-			b, _ := json.Marshal(chunk)
-			_, _ = w.Write([]byte("data: " + string(b) + "\n\n"))
-			flusher.Flush()
+			if argsDelta.Delta == "" {
+				return nil
+			}
+
+			toolCallsSeen = true
+			state := getOrCreateCodexToolCallState(
+				toolCallsByOutputIndex,
+				toolCallsByItemID,
+				&orderedToolCalls,
+				argsDelta.OutputIndex,
+				argsDelta.ItemID,
+			)
+			state.Arguments += argsDelta.Delta
+			if state.MetadataSent {
+				emitToolCallArguments(state, argsDelta.Delta)
+			} else {
+				state.BufferedArgs.WriteString(argsDelta.Delta)
+			}
+		case "response.function_call_arguments.done":
+			var argsDone codexResponseFunctionCallArgumentsDoneEvent
+			if err := json.Unmarshal([]byte(ev.Data), &argsDone); err != nil {
+				return nil
+			}
+
+			toolCallsSeen = true
+			state := getOrCreateCodexToolCallState(
+				toolCallsByOutputIndex,
+				toolCallsByItemID,
+				&orderedToolCalls,
+				argsDone.OutputIndex,
+				argsDone.ItemID,
+			)
+			if name := strings.TrimSpace(argsDone.Name); name != "" {
+				state.Name = name
+			}
+			if argsDone.Arguments != "" {
+				state.Arguments = argsDone.Arguments
+			}
+
+			emitToolCallMetadata(state, true)
+			if !state.ArgumentsEmitted && argsDone.Arguments != "" {
+				emitToolCallArguments(state, argsDone.Arguments)
+			}
 		case "response.completed":
-			if id == "" {
-				id = fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+			var completed codexResponseCompletedEvent
+			if err := json.Unmarshal([]byte(ev.Data), &completed); err == nil {
+				if completed.Response.ID != "" {
+					id = completed.Response.ID
+				}
+				if completed.Response.CreatedAt > 0 {
+					createdAt = completed.Response.CreatedAt
+				}
+				if completed.Response.Model != "" {
+					model = completed.Response.Model
+				}
 			}
-			if createdAt == 0 {
-				createdAt = time.Now().Unix()
+
+			finishReason := "stop"
+			if toolCallsSeen {
+				finishReason = "tool_calls"
 			}
-			final := map[string]any{
-				"id":      id,
-				"object":  "chat.completion.chunk",
-				"created": createdAt,
-				"model":   model,
-				"choices": []map[string]any{{
-					"index":         0,
-					"delta":         map[string]any{},
-					"finish_reason": "stop",
-				}},
-			}
-			b, _ := json.Marshal(final)
-			_, _ = w.Write([]byte("data: " + string(b) + "\n\n"))
+			emitChunk(map[string]any{}, finishReason)
 			_, _ = w.Write([]byte("data: [DONE]\n\n"))
 			flusher.Flush()
 		}

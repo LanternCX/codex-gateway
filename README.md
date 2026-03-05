@@ -144,6 +144,30 @@ For OpenCode clients targeting this gateway and expecting codex-like responses/t
 }
 ```
 
+If your OpenCode setup uses the provider-catalog schema (`npm` + nested `models`), you can use this provider block under `providers` as a compatibility fallback:
+
+```json
+"gateway": {
+  "name": "gateway",
+  "npm": "@ai-sdk/openai-compatible",
+  "models": {
+    "gpt-5.3-codex": {
+      "name": "gpt-5.3-codex",
+      "variants": {
+        "xhigh": { "reasoningEffort": "xhigh" },
+        "high": { "reasoningEffort": "high" },
+        "low": { "reasoningEffort": "low" }
+      }
+    }
+  },
+  "options": {
+    "baseURL": "http://localhost:8080/v1"
+  }
+}
+```
+
+Note: in `codex_oauth` mode, chat-compat now maps `tools`, `tool_choice`, `parallel_tool_calls`, `reasoning_effort`, and tool message `tool_call_id`, and returns chat `tool_calls` in both non-stream and stream responses. `max_tokens`/`max_completion_tokens` are accepted for compatibility but ignored (not forwarded upstream). For full unmodified Codex event semantics, use `POST /v1/responses`.
+
 Request payload example (`POST /v1/chat/completions`):
 
 ```json
